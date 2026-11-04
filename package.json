@@ -1,6 +1,6 @@
 {
   "name": "hearer",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Self-hosted music request and upload portal.",
