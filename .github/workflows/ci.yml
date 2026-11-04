@@ -118,17 +118,22 @@ jobs:
             dump_logs
             exit 1
           fi
-          # Match the node process itself, not tini (which stays root as PID 1).
-          proc="$(docker exec "$cid" ps -o user,args | awk '$2 == "node" && /dist\/index\.js/' || true)"
-          echo "process: $proc"
-          case "$proc" in
-            hearer*) ;;
-            *)
-              echo "::error::server process is not running as the hearer user"
-              dump_logs
-              exit 1
-              ;;
-          esac
+          # Read /proc directly: find the node server (not tini, PID 1, which
+          # stays root, and not the root healthcheck) and check its real uid.
+          server_uids="$(docker exec "$cid" sh -c '
+            for p in /proc/[0-9]*; do
+              # comm is "MainThread" under Node 24, so match on cmdline.
+              cmd="$(tr "\0" " " < "$p/cmdline" 2>/dev/null)" || continue
+              case "$cmd" in node\ *dist/index.js*) ;; *) continue ;; esac
+              awk "/^Uid:/ { print \$2 }" "$p/status"
+            done')"
+          echo "server process uid(s): ${server_uids:-<none>}"
+          if [ -z "$server_uids" ] || [ "$(echo "$server_uids" | sort -u)" != "1234" ]; then
+            echo "::error::server process is not running as PUID 1234"
+            docker exec "$cid" ps || true
+            dump_logs
+            exit 1
+          fi
 
       - name: Smoke test, non-root start (--user)
         run: |
