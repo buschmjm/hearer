@@ -61,8 +61,10 @@ export const requestRoutes: FastifyPluginCallbackZod = (app, _options, done) => 
     async (request, reply) => {
       const user = currentUser(request);
       const controller = new AbortController();
-      request.raw.once('close', () => {
-        if (!request.raw.complete || request.raw.destroyed) controller.abort();
+      // Abort only when the connection drops before the answer is sent (an IncomingMessage also
+      // emits `close` once its body is read, which is not a disconnect).
+      reply.raw.once('close', () => {
+        if (!reply.raw.writableFinished) controller.abort();
       });
       const created = await requests.create(user, request.body, { signal: controller.signal });
       void reply.status(201);

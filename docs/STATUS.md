@@ -585,3 +585,40 @@ All matched files use Prettier code style!
 **Deviations:** no schema change. More than 8 files (provider, mock, fixtures, routes, job, two test files). A Lidarr search that finds nothing leaves the request in PROCESSING (poll note says so) until cancelled or retried; deciding "not found" is out of scope without real Lidarr behaviour to base it on. DECISIONS.md not amended.
 **Next:** H-15 calls `RequestsService.fulfillFromUpload`; H-21 subscribes to `app.hearer.events`; web batches read `/requests`, `/requests/counts`, `/requests/quota`, `/fulfillment/providers` and the Lidarr test/options routes.
 **Open questions:** (1) All Lidarr behaviour is unverified against a real instance (see above). (2) Adding an album whose artist Lidarr must first import relies on the artist refresh finishing within the submit job's retries (6 attempts, 30 s base backoff, about 15 minutes in total).
+
+## H-17 — Web: search, artist/album/track pages, request flow
+
+**Status:** done
+
+**Shipped:**
+
+- `/search?q=&type=artist|album|track` (`routes/search.tsx`): search box debounced 400 ms and synced to the URL (`replace`, so no history spam; back/forward and the home search box overwrite the field only when the URL changed from outside), ARIA tabs (arrow keys) Artists / Albums (default, matches the API default and the URL omits it) / Tracks, `useInfiniteQuery` with "Load more" (offset paging, 20 per page, capped at the API's 10 000), skeleton loaders, empty states, friendly retryable errors (502 `metadata_unavailable`, 429, offline).
+- `/artists/$mbid`, `/albums/$mbid`, `/tracks/$mbid`: artist header + release groups grouped Albums / EPs / Singles / Other by primary type (newest first, "Show more releases" over the 50-per-page browse); album page with the 500 px cover (`front-250` swapped for `front-500`), meta chips, linked artist credits, tracklist grouped by disc with durations and a per-track request control; track page with ISRCs and "Appears on".
+- Components: `ResultCard` (tile for albums, row for artists/tracks), `Cover` (CAA `onError` swaps in a placeholder, also for a missing url), `StatusBadge` / `RequestStatusBadge` / `LibraryBadge` ("In library", "Possibly in library", Requested/Approved/Processing/Awaiting upload/Available/...), `RequestButton`, `QuotaNote`, `Toast` (`ToastProvider` mounted in `Layout`, `useToast`, outside a provider it is a no-op), `Dialog` (accessible modal: focus trap, Esc, restore focus, scroll lock; used by H-18), `CatalogState` (error/empty/skeleton), `DetailParts`, `ArtistCredits`.
+- `RequestButton`: needs REQUEST / REQUEST_ALBUM / REQUEST_ARTIST for the type (ADMIN passes); without it a disabled button with a tooltip and an accessible reason. Existing state replaces the button (in library, requested, approved, ... available); declined/failed offer "Request again"; a possible library match shows next to the button. `POST /requests` shows the requested state immediately and rolls back on error; success/409/429 and other failures become toasts; 409 `already_requested` shows the existing request's real status, 409 `already_available` shows "In library", 429 `quota_exceeded` shows used/limit and when a slot frees up. Quota (`GET /requests/quota`) is in the button tooltip and as a line under the primary buttons. Mutations invalidate `['requests']` and `['catalog']`.
+- API hooks: `api/catalog.ts` (search, artist, artist albums, album, track query options with shared zod schemas) and `api/requests.ts` (list, counts, quota, detail, create, approve/decline/retry/cancel hooks; used by H-18 too). Query-key factories `catalogKeys` / `requestKeys`.
+- Router: `/search` search schema (`q`, `type`), three detail routes; the stub is gone. The home search box already navigated to `/search?q=`.
+- Tests (`search`, `requestButton`, `catalogPages`; helpers `catalogFixtures.ts`, `renderUtils.tsx`): debounce (no request per keystroke) and URL sync, tabs, load more, badges, empty/error/retry, cover fallback, link targets, RequestButton states incl. 409/429/permissions/rollback/ADMIN/quota tooltip, artist grouping, album tracklist single-track and album requests, disc grouping, track page, format helpers.
+- Screenshots (1280 and 390 px, dark, real server + fixture MusicBrainz): `/tmp/claude-0/-home-user/d2e062ff-6bd1-5840-b011-41cd111dc499/scratchpad/h17-{search,search-artists,search-tracks,album,artist,track}-{1280,390}.png`.
+
+**Server fixes found by running the real app (small, surgical):**
+
+- `routes/requests.ts` and `routes/search.ts` aborted the upstream MusicBrainz call as soon as the request body was read: over a real socket Node emits `close` on the IncomingMessage right after the body, and the old test (`!complete || destroyed`) is true then. `POST /requests` returned 500 against the real app (tests use `inject`, which never hit it). Now the abort is tied to the response closing unfinished (`reply.raw`). New real-HTTP regression test `requests.http.test.ts` (fails on the old code; also checks that a real disconnect still aborts).
+- CSP `img-src` allowed `https://*.archive.org` but not the bare `https://archive.org` the Cover Art Archive redirects to, so covers were blocked in browsers. Added `https://archive.org` (`static.ts` and its test).
+
+**Verify:** `pnpm --filter web build && pnpm --filter web test`, then `pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm format:check`
+
+```text
+apps/web test:  Test Files  9 passed (9)
+apps/web test:       Tests  96 passed (96)
+apps/server test:  Test Files  40 passed | 1 skipped (41)
+apps/server test:       Tests  1044 passed | 4 skipped (1048)
+Checking formatting...
+All matched files use Prettier code style!
+```
+
+**Deviations:** more than 8 files (components, routes, API hooks, tests). Two server fixes outside the web app (see above). No cover image proxy (the UI uses CAA URLs directly, as H-09 planned). Catalog results show the badge/state through `RequestButton` (one control for state and action) rather than a separate badge in the card, so the optimistic state is shown in one place. DECISIONS.md not amended.
+
+**Next:** H-18 (requests queue, my requests, timeline).
+
+**Open questions:** none.

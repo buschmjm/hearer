@@ -10,7 +10,7 @@ import {
   searchResponseSchema,
   type SearchResponse,
 } from '@hearer/shared';
-import type { FastifyRequest } from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { FastifyPluginCallbackZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { MetadataError, type RequestOptions } from '../adapters/metadata/types.ts';
@@ -60,10 +60,15 @@ async function guarded<T>(work: Promise<T>): Promise<T> {
 }
 
 /** An AbortSignal that fires when the client goes away before the response is sent. */
-function clientGone(request: FastifyRequest): RequestOptions {
+/**
+ * Aborts upstream work when the client goes away. Watches the *response*: an IncomingMessage
+ * also emits `close` (and is destroyed) as soon as its body has been read, which is not a
+ * disconnect. The response only closes unfinished when the connection dropped.
+ */
+function clientGone(reply: FastifyReply): RequestOptions {
   const controller = new AbortController();
-  request.raw.once('close', () => {
-    if (!request.raw.complete || request.raw.destroyed) controller.abort();
+  reply.raw.once('close', () => {
+    if (!reply.raw.writableFinished) controller.abort();
   });
   return { signal: controller.signal };
 }
@@ -99,10 +104,10 @@ export function searchRoutes(options: { rateLimitMax?: number } = {}): FastifyPl
           response: { 200: searchResponseSchema },
         },
       },
-      async (request): Promise<SearchResponse> => {
+      async (request, reply): Promise<SearchResponse> => {
         const { q, type, offset, limit } = request.query;
         const page = { offset, limit };
-        const signal = clientGone(request);
+        const signal = clientGone(reply);
         if (type === 'artist') {
           const result = await guarded(metadata.searchArtists(q, page, signal));
           const lookup = badges.resolve({
@@ -151,9 +156,9 @@ export function searchRoutes(options: { rateLimitMax?: number } = {}): FastifyPl
           response: { 200: artistDetailSchema },
         },
       },
-      async (request) => {
+      async (request, reply) => {
         const { mbid } = request.params;
-        const artist = await guarded(metadata.getArtist(mbid, clientGone(request)));
+        const artist = await guarded(metadata.getArtist(mbid, clientGone(reply)));
         const lookup = badges.resolve({
           artists: [mbid],
           hints: { artists: new Map([[mbid, { name: artist.name }]]) },
@@ -174,13 +179,13 @@ export function searchRoutes(options: { rateLimitMax?: number } = {}): FastifyPl
           response: { 200: pageSchema(releaseGroupSummarySchema) },
         },
       },
-      async (request) => {
+      async (request, reply) => {
         const { offset, limit, type } = request.query;
         const result = await guarded(
           metadata.getArtistReleaseGroups(
             request.params.mbid,
             { offset, limit, type },
-            clientGone(request),
+            clientGone(reply),
           ),
         );
         const lookup = badges.resolve({
@@ -202,9 +207,9 @@ export function searchRoutes(options: { rateLimitMax?: number } = {}): FastifyPl
           response: { 200: releaseGroupDetailSchema },
         },
       },
-      async (request) => {
+      async (request, reply) => {
         const { mbid } = request.params;
-        const album = await guarded(metadata.getReleaseGroup(mbid, clientGone(request)));
+        const album = await guarded(metadata.getReleaseGroup(mbid, clientGone(reply)));
         const lookup = badges.resolve({
           albums: [mbid],
           tracks: album.tracks.map((t) => t.mbid),
@@ -229,9 +234,9 @@ export function searchRoutes(options: { rateLimitMax?: number } = {}): FastifyPl
           response: { 200: recordingDetailSchema },
         },
       },
-      async (request) => {
+      async (request, reply) => {
         const { mbid } = request.params;
-        const track = await guarded(metadata.getRecording(mbid, clientGone(request)));
+        const track = await guarded(metadata.getRecording(mbid, clientGone(reply)));
         const lookup = badges.resolve({
           tracks: [mbid],
           albums: track.releaseGroups.map((rg) => rg.mbid),
