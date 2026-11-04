@@ -1,6 +1,5 @@
-import { spawn, execFile, type ChildProcess } from 'node:child_process';
-import { once } from 'node:events';
-import { createWriteStream, existsSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -12,15 +11,22 @@ import {
   startAcoustIdMock,
   startJellyfinMock,
   startMusicBrainzMock,
+  startProxy,
   startWebhookReceiver,
   type MockService,
 } from './mocks/index.ts';
-import { REPO_ROOT, writeRuntime, type Runtime } from './support/runtime.ts';
+import { reloadRuntime, writeRuntime, type Runtime } from './support/runtime.ts';
+import {
+  SERVER_ENTRY,
+  STATIC_DIR,
+  spawnServer,
+  stopProcess,
+  waitForHealth,
+} from './support/server.ts';
 
 const exec = promisify(execFile);
 
 const ACOUSTID_KEY = 'e2e-acoustid-key';
-const HEALTH_TIMEOUT_MS = 45_000;
 
 async function freePort(): Promise<number> {
   const server = createServer();
@@ -52,36 +58,14 @@ async function makeCover(path: string): Promise<Buffer> {
   return readFile(path);
 }
 
-async function waitForHealth(baseUrl: string, child: ChildProcess, logPath: string): Promise<void> {
-  const deadline = Date.now() + HEALTH_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    if (child.exitCode !== null) {
-      throw new Error(
-        `Hearer exited with code ${String(child.exitCode)} before it was healthy; see ${logPath}`,
-      );
-    }
-    try {
-      const response = await fetch(`${baseUrl}/api/v1/health`);
-      if (response.ok) return;
-    } catch {
-      // not listening yet
-    }
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  throw new Error(
-    `Hearer did not become healthy within ${String(HEALTH_TIMEOUT_MS / 1000)}s; see ${logPath}`,
-  );
-}
-
 /**
  * Starts the whole stack for the run: mock Jellyfin, MusicBrainz + Cover Art Archive, AcoustID
- * and a webhook receiver (all in this process), then the built server (`pnpm e2e` builds first)
- * as a child process with temp data, music and staging directories. Returns the teardown.
+ * and a webhook receiver (all in this process), the built server (`pnpm e2e` builds first) with
+ * temp data, music and staging directories, and a reverse proxy with a 100 MB body cap in front
+ * of it. Browser and API helpers talk to the proxy. Returns the teardown.
  */
 export default async function globalSetup(): Promise<() => Promise<void>> {
-  const serverEntry = join(REPO_ROOT, 'apps', 'server', 'dist', 'index.js');
-  const staticDir = join(REPO_ROOT, 'apps', 'web', 'dist');
-  for (const required of [serverEntry, join(staticDir, 'index.html')]) {
+  for (const required of [SERVER_ENTRY, join(STATIC_DIR, 'index.html')]) {
     if (!existsSync(required)) {
       throw new Error(
         `${required} is missing. Run \`pnpm e2e\` (it builds the server and web app first).`,
@@ -100,15 +84,13 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   const cover = await makeCover(join(scratchDir, 'cover.jpg'));
   const user = { username: 'e2e-jellyfin', password: 'jellyfin-pass-1' };
   const mocks: MockService[] = [];
-  let server: ChildProcess | undefined;
 
   const teardown = async (): Promise<void> => {
-    if (server?.exitCode === null && server.pid !== undefined) {
-      const exited = once(server, 'exit');
-      server.kill('SIGTERM');
-      const timer = setTimeout(() => server?.kill('SIGKILL'), 10_000);
-      await exited;
-      clearTimeout(timer);
+    try {
+      // The pid may have changed if a spec restarted the server.
+      await stopProcess(reloadRuntime().serverPid);
+    } catch {
+      // no runtime file yet (setup failed early)
     }
     await Promise.all(mocks.map((m) => m.stop()));
     if (process.env.E2E_KEEP !== '1') await rm(root, { recursive: true, force: true });
@@ -124,42 +106,36 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     const webhook = await startWebhookReceiver();
     mocks.push(jellyfin, musicBrainz, acoustId, webhook);
 
-    const port = await freePort();
-    const baseUrl = `http://127.0.0.1:${String(port)}`;
+    const serverPort = await freePort();
+    const directUrl = `http://127.0.0.1:${String(serverPort)}`;
+    const proxy = await startProxy({ port: serverPort });
+    mocks.push(proxy);
+
     const serverLog = join(root, 'server.log');
     await writeFile(serverLog, '');
-    server = spawn(process.execPath, [serverEntry], {
-      cwd: REPO_ROOT,
-      env: {
-        ...process.env,
-        NODE_ENV: 'production',
-        HOST: '127.0.0.1',
-        PORT: String(port),
-        BASE_URL: baseUrl,
-        DATA_DIR: dataDir,
-        MUSIC_DIR: musicDir,
-        STAGING_DIR: stagingDir,
-        STATIC_DIR: staticDir,
-        LOG_LEVEL: 'info',
-        LOG_FORMAT: 'json',
-        // Specs sign in many times from one address.
-        AUTH_RATE_LIMIT_MAX: '1000',
-      },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    const log = createWriteStream(serverLog);
-    server.stdout?.pipe(log);
-    server.stderr?.pipe(log);
-    // If this process dies without running teardown, do not leave the server behind.
-    const child = server;
-    process.once('exit', () => child.kill('SIGKILL'));
-
-    await waitForHealth(baseUrl, server, serverLog);
-    if (server.pid === undefined) throw new Error('Hearer has no pid');
+    const serverEnv: Record<string, string> = {
+      // `test` enables the import pause hook (restart spec); nothing else differs from production.
+      NODE_ENV: 'test',
+      HOST: '127.0.0.1',
+      PORT: String(serverPort),
+      BASE_URL: proxy.origin,
+      DATA_DIR: dataDir,
+      MUSIC_DIR: musicDir,
+      STAGING_DIR: stagingDir,
+      STATIC_DIR,
+      LOG_LEVEL: 'info',
+      LOG_FORMAT: 'json',
+      // Specs sign in many times from one address.
+      AUTH_RATE_LIMIT_MAX: '1000',
+    };
+    const pid = spawnServer(serverEnv, serverLog);
 
     const runtime: Runtime = {
-      baseUrl,
-      serverPid: server.pid,
+      baseUrl: proxy.origin,
+      directUrl,
+      serverPid: pid,
+      serverEnv,
+      proxyDropOnceUrl: `${proxy.origin}/__proxy/drop-once`,
       dataDir,
       musicDir,
       stagingDir,
@@ -186,6 +162,15 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       admin: { username: 'e2e-admin', password: 'e2e-admin-password' },
     };
     writeRuntime(runtime);
+    // The server is detached (specs restart it); do not leave it behind if this process dies.
+    process.once('exit', () => {
+      try {
+        process.kill(reloadRuntime().serverPid, 'SIGKILL');
+      } catch {
+        // already gone
+      }
+    });
+    await waitForHealth(directUrl, pid, serverLog);
   } catch (err) {
     await teardown();
     throw err;

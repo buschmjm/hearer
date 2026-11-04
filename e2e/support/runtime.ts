@@ -8,9 +8,19 @@ export const RUNTIME_FILE = join(E2E_ROOT, '.run', 'runtime.json');
 
 /** Everything a spec needs to know about the stack global setup started. */
 export interface Runtime {
-  /** Hearer origin, e.g. `http://127.0.0.1:41000`. */
+  /**
+   * Origin the browser and API helpers use: the capped reverse proxy in front of Hearer
+   * (`mocks/proxy.ts`), e.g. `http://127.0.0.1:41000`. It rejects request bodies over 100 MB.
+   */
   baseUrl: string;
+  /** Hearer's own origin, behind the proxy. */
+  directUrl: string;
+  /** Current server pid. Rewritten by `restartServer` in fixtures. */
   serverPid: number;
+  /** Environment given to the server process (restarts reuse it). */
+  serverEnv: Record<string, string>;
+  /** `POST` here to arm one mid-body connection drop (see mocks/proxy.ts). */
+  proxyDropOnceUrl: string;
   /** Temp directories handed to the server (`DATA_DIR`, `MUSIC_DIR`, `STAGING_DIR`). */
   dataDir: string;
   musicDir: string;
@@ -50,4 +60,10 @@ let cached: Runtime | undefined;
 export function readRuntime(): Runtime {
   cached ??= JSON.parse(readFileSync(RUNTIME_FILE, 'utf8')) as Runtime;
   return cached;
+}
+
+/** Read the file again (the server pid changes when a spec restarts the server). */
+export function reloadRuntime(): Runtime {
+  cached = undefined;
+  return readRuntime();
 }

@@ -86,3 +86,25 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ HEARER_SECRET: 'short' })).toThrow(/HEARER_SECRET/);
   });
 });
+
+describe('E2E import pause hook', () => {
+  it('is ignored unless NODE_ENV=test', () => {
+    expect(loadConfig({ HEARER_TEST_IMPORT_PAUSE_MS: '5000' }).testImportPause).toBeUndefined();
+    expect(
+      loadConfig({ NODE_ENV: 'development', HEARER_TEST_IMPORT_PAUSE_MS: '5000' }).testImportPause,
+    ).toBeUndefined();
+  });
+
+  it('defaults to the state-saved step under NODE_ENV=test and accepts another', () => {
+    const env = { NODE_ENV: 'test', HEARER_TEST_IMPORT_PAUSE_MS: '5000' };
+    expect(loadConfig(env).testImportPause).toEqual({ ms: 5000, point: 'state-saved' });
+    expect(loadConfig({ ...env, HEARER_TEST_IMPORT_PAUSE_AT: 'moved' }).testImportPause).toEqual({
+      ms: 5000,
+      point: 'moved',
+    });
+  });
+
+  it('is off when unset', () => {
+    expect(loadConfig({ NODE_ENV: 'test' }).testImportPause).toBeUndefined();
+  });
+});

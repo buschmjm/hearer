@@ -29,6 +29,12 @@ const envSchema = z.object({
   LOG_FORMAT: z.enum(['json', 'pretty']).default('json'),
   HEARER_SECRET: z.preprocess(emptyToUndefined, z.string().min(16).optional()),
   TRUST_PROXY: z.preprocess(emptyToUndefined, trustProxy.default(false)),
+  /** Crash-test hook for the end-to-end suite; only honored when NODE_ENV=test. */
+  HEARER_TEST_IMPORT_PAUSE_MS: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(1).max(600_000).optional(),
+  ),
+  HEARER_TEST_IMPORT_PAUSE_AT: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   AUTH_RATE_LIMIT_MAX: z.preprocess(emptyToUndefined, z.coerce.number().int().min(1).default(10)),
 });
 
@@ -49,6 +55,11 @@ export interface Config {
   trustProxy: boolean | number;
   /** Login / setup attempts allowed per client address per minute. */
   authRateLimitMax: number;
+  /**
+   * Test only (NODE_ENV=test): sleep this long at the named import step (default `state-saved`),
+   * so a test can kill the process mid-import. Always undefined in production.
+   */
+  testImportPause: { ms: number; point: string } | undefined;
 }
 
 export class ConfigError extends Error {
@@ -84,5 +95,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     secret: e.HEARER_SECRET,
     trustProxy: e.TRUST_PROXY,
     authRateLimitMax: e.AUTH_RATE_LIMIT_MAX,
+    testImportPause:
+      e.NODE_ENV === 'test' && e.HEARER_TEST_IMPORT_PAUSE_MS !== undefined
+        ? {
+            ms: e.HEARER_TEST_IMPORT_PAUSE_MS,
+            point: e.HEARER_TEST_IMPORT_PAUSE_AT ?? 'state-saved',
+          }
+        : undefined,
   };
 }
