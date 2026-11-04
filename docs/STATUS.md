@@ -646,3 +646,33 @@ All matched files use Prettier code style!
 **Next:** H-21 (notifications: `upload.imported` / `upload.failed` payloads carry `libraryPath` / `detail`), H-19 (web review UI can show `retry-import`).
 
 **Open questions:** (1) Jellyfin's real behaviour for `POST /Library/Media/Updated` on a new file is unverified; the follow-up incremental sync two minutes later is the safety net. (2) A cover is skipped (not an error) when CAA has none; a CAA outage is retried and skipped on the last attempt. (3) ffmpeg-fallback files lose some MusicBrainz ids (see above); the fallback should never trigger for the seven accepted formats.
+
+## H-19 — Web: upload dropzone, uploads list, review and match editor
+
+**Status:** done
+
+**Shipped:**
+
+- `/upload` (`routes/upload.tsx`): ToS notice with a checkbox remembered per user in `localStorage` (try/catch; the dropzone stays disabled until ticked), "Fulfills request" selector (own requests in AWAITING_UPLOAD/PROCESSING via `GET /requests`; hidden when that API is not available to the user), `Dropzone` (drop, file picker, folder picker, dropped folders walked via `webkitGetAsEntry`; only accepted extensions are taken from inside folders), per-file rows (progress, speed, ETA, pause/resume/cancel, then the polled server status and a Review link), a hint for earlier unfinished uploads, and a "Review these N files together" link for multi-file drops.
+- `lib/uploadManager.ts`: tus-js-client wrapper that lives outside React (uploads survive navigation). `chunkSize` = min(server `maxChunkSizeBytes`, 50 MiB) minus 1 MiB; endpoint from `/uploads/config`; `x-csrf-token` header; metadata `filename`, `batchId` (one uuid per drop), optional `targetRequestId`; `retryDelays` [0,1,3,5,10,20 s]; 2 files at a time; the fingerprint is stored, so dropping the same file again after a reload continues the old upload (`findPreviousUploads` + `resumeFromPreviousUpload`, shown as "resumed"); cancel = `abort(true)` (tus DELETE); `X-Hearer-Upload-Id` becomes `uploadId`.
+- `lib/uploadFiles.ts`: client checks before any byte is sent (extension incl. `aif`, empty, size, remaining quota counting files still queued).
+- `/uploads` (`routes/uploads.tsx`): own uploads, "All" tab for MANAGE_UPLOADS, status filter, pagination, grouped by batch with a "Review batch" link, status badges, auto refresh.
+- `/uploads/$id` (`routes/uploadReview.tsx`): `MatchPicker` (ranked, score meter, title/artist/album/year, cover with fallback, duration delta, AcoustID/tag source), `TagEditor` (every TagSet field, validated with the shared `tagSetSchema`, cover preview from `coverSource`, MusicBrainz ids in a collapsible section), destination preview, request selector, duplicate banner with "Keep as alternate version" (only when `canKeep`), Save / Approve (saves first when edited) / Reject (reason) / Reanalyze / Retry import (FAILED + MANAGE_UPLOADS), polling while RECEIVED/ANALYZING/APPROVED/IMPORTING, final state shows the library path. Approve is shown to MANAGE_UPLOADS/ADMIN and to owners with AUTO_APPROVE_UPLOAD (the server's rule); other uploaders see Save and an explanation.
+- `/uploads/batch/$batchId` (`routes/uploadBatch.tsx`): album from the `AlbumGroup`, track map with editable disc/track numbers (Save track numbers), clash warning that blocks "Approve all" (`POST /uploads/batch/:id/approve`).
+- Nav: Upload and Uploads for UPLOAD/MANAGE_UPLOADS. Routes added in a marked block in `router.tsx`; only the `/upload` stub was removed from `routes/stubs.tsx`.
+- Server/shared (small, additive): `UploadDto.libraryPath` (so the review page can show where the file landed); CSP `img-src` gained `https://archive.org` (the apex host is not matched by `*.archive.org`, and Cover Art Archive redirects there, so covers were blocked); `static.test.ts` updated.
+- Tests (web 109): `upload.manager.test.ts` (mocked tus `Upload`: chunk size, headers, metadata, concurrency 2, pause/resume/cancel, resume of a previous upload, errors, validation, folder walking), `upload.dropzone.test.tsx` (Dropzone rejects extension/size/quota, drop, disabled, ToS memory, upload page, uploads list tabs/filter/pagination), `upload.review.test.tsx` (MatchPicker, editor fill + validation + save/approve/reject/reanalyze, request link, destination preview, duplicate keep, retry import, permissions, polling, batch save/approve/clash).
+
+**Real browser check (Playwright, chromium):** built web + server, ran the server with `STATIC_DIR`, temp DATA/MUSIC/STAGING dirs and `metadata.musicBrainzBaseUrl` (and `coverArtBaseUrl`) at the MusicBrainz fixture server, `uploads.autoApproveThreshold` 1 so the file waits for review. In the browser: logged in, ticked the notice, `setInputFiles` of an ffmpeg-generated tagged FLAC (387 s sine), watched the progress bar (throttled with CDP), the status reach "Needs review", opened the review page, approved; the file landed at `MUSIC_DIR/Radiohead/OK Computer (1997)/02 - Paranoid Android.flac`. Screenshots at 1280 and 390: `scratchpad/h19-{upload-empty,upload-during,upload-after,uploads,review}-{1280,390}.png` and `h19-review-imported-1280.png`.
+
+**Verify:** `pnpm --filter web test && pnpm --filter web build`, then `pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm format:check`.
+
+**Deviations:**
+
+- `packages/shared/src/template.ts` only validates; the renderer is server side. The destination preview uses the web renderer (`lib/template.ts`, the one the setup wizard uses) with the library naming template, and only for users who may read `/settings/library` (MANAGE_SETTINGS). It ignores the singles template, which the server picks from MusicBrainz data.
+- More than 8 files (several components, three pages, manager, tests). DECISIONS.md not amended.
+- Resuming after a reload needs the person to drop the same file again (browsers cannot keep `File` handles); the page says so when RECEIVING uploads exist.
+
+**Next:** H-17/H-18/H-20 pages (siblings), H-22 docs.
+
+**Open questions:** none.

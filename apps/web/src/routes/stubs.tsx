@@ -16,11 +16,6 @@ export function RequestsPage() {
   return <ComingSoon title="Requests" />;
 }
 
-/** H-19: upload dropzone and review. */
-export function UploadPage() {
-  return <ComingSoon title="Upload" />;
-}
-
 /** H-20: settings, users and jobs. */
 export function AdminPage() {
   return <ComingSoon title="Admin" />;

@@ -16,7 +16,7 @@ const CAA_INTERVAL_MS = 250;
 /**
  * Deterministic front-cover URL. Nothing is fetched, so searching never waits on the archive.
  * The archive answers 307 to archive.org, and 404 when a release group has no art, so a UI
- * needs `img-src https://coverartarchive.org https://*.archive.org` and an onerror fallback.
+ * needs `img-src https://coverartarchive.org https://archive.org https://*.archive.org` and an onerror fallback.
  */
 export function coverArtUrl(
   baseUrl: string,

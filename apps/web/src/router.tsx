@@ -17,14 +17,11 @@ import { safeReturnTo } from './lib/returnTo.ts';
 import { HomePage } from './routes/home.tsx';
 import { LoginPage } from './routes/login.tsx';
 import { SetupPage } from './routes/setup.tsx';
-import {
-  AccountPage,
-  AdminPage,
-  ApiKeysPage,
-  RequestsPage,
-  SearchPage,
-  UploadPage,
-} from './routes/stubs.tsx';
+import { UploadPage } from './routes/upload.tsx';
+import { UploadBatchPage } from './routes/uploadBatch.tsx';
+import { UploadReviewPage } from './routes/uploadReview.tsx';
+import { UploadsPage } from './routes/uploads.tsx';
+import { AccountPage, AdminPage, ApiKeysPage, RequestsPage, SearchPage } from './routes/stubs.tsx';
 
 /*
  * Routes are declared in code (no generated route tree). To add a page: create a component under
@@ -106,6 +103,27 @@ const uploadRoute = createRoute({
   path: '/upload',
   component: UploadPage,
 });
+// --- H-19 uploads routes ---
+const uploadsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/uploads',
+  component: UploadsPage,
+});
+const uploadBatchRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/uploads/batch/$batchId',
+  component: function UploadBatch() {
+    return <UploadBatchPage batchId={uploadBatchRoute.useParams().batchId} />;
+  },
+});
+const uploadReviewRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/uploads/$id',
+  component: function UploadReview() {
+    return <UploadReviewPage id={uploadReviewRoute.useParams().id} />;
+  },
+});
+// --- end H-19 uploads routes ---
 const adminRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/admin',
@@ -130,6 +148,10 @@ const routeTree = rootRoute.addChildren([
     searchRoute,
     requestsRoute,
     uploadRoute,
+    // H-19
+    uploadsRoute,
+    uploadBatchRoute,
+    uploadReviewRoute,
     adminRoute,
     accountRoute,
     apiKeysRoute,
