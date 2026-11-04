@@ -5,8 +5,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Permission, type MatchResult, type TagSet } from '@hearer/shared';
 import { eq } from 'drizzle-orm';
-import { z } from 'zod';
-import { defineJob } from '../../src/jobs/registry.ts';
 import { RateLimiter } from '../../src/lib/ratelimit.ts';
 import { uploads } from '../../src/db/schema.ts';
 import { sha256File } from '../../src/jobs/uploadProbe.ts';
@@ -123,6 +121,8 @@ export async function startRig(
   options: {
     startJobs?: boolean;
     withImportJob?: boolean;
+    /** Keep the real `upload.import` job (H-15 tests) instead of the recording stub. */
+    realImport?: boolean;
     deps?: Parameters<typeof createHarness>[0];
   } = {},
 ): Promise<Rig> {
@@ -153,17 +153,12 @@ export async function startRig(
   const managerId = await addUser(h.app, 'manager', base | Permission.MANAGE_UPLOADS);
   const bobId = await addUser(h.app, 'bob', base);
   const imports: string[] = [];
-  if (options.withImportJob) {
-    h.app.hearer.jobs.define(
-      defineJob({
-        type: 'upload.import',
-        payload: z.object({ uploadId: z.uuid() }),
-        concurrency: 1,
-        handler: ({ uploadId }) => {
-          imports.push(uploadId);
-        },
-      }),
-    );
+  // H-15 registers the real `upload.import`; the analyze tests only need to see that it was queued.
+  const importJob = h.app.hearer.jobs.registry.get('upload.import');
+  if (importJob && !options.realImport) {
+    importJob.handler = (payload) => {
+      if (options.withImportJob) imports.push((payload as { uploadId: string }).uploadId);
+    };
   }
   const audioDir = mkdtempSync(join(tmpdir(), 'hearer-rig-'));
   return {

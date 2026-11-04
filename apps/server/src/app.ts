@@ -68,6 +68,10 @@ import { DuplicateChecker, MatchingService } from './services/matching.ts';
 import { UploadReviewService, type UploadEventSink } from './services/uploadReview.ts';
 import { uploadReviewRoutes } from './routes/uploads.review.ts';
 
+// H-15 import
+import { uploadImportJob } from './jobs/uploadImport.ts';
+import { ImportService } from './services/import.ts';
+
 // H-11 requests
 import { FulfillmentRegistry } from './adapters/fulfillment/registry.ts';
 import { requestAvailabilityJob } from './jobs/requestAvailability.ts';
@@ -113,6 +117,8 @@ declare module 'fastify' {
       requests: RequestsService;
       /** Fulfillment provider selection (Manual, Lidarr). */
       fulfillment: FulfillmentRegistry;
+      /** Tag, file and announce approved uploads (H-15). */
+      imports: ImportService;
     };
   }
 }
@@ -163,6 +169,13 @@ export interface AppDeps {
   };
   /** Lidarr HTTP tuning (tests): fetch implementation and timeout. */
   lidarrOptions?: { fetch?: typeof fetch; timeoutMs?: number };
+  /** Upload import tuning (tests): crash hooks, cover source, rename, umask, ffmpeg. */
+  uploadImport?: Partial<
+    Pick<
+      ConstructorParameters<typeof ImportService>[0],
+      'hook' | 'fetchCover' | 'rename' | 'umask' | 'ffmpegBinary' | 'now'
+    >
+  >;
   /** Catalog requests per user per minute (tests). */
   searchRateLimitMax?: number;
 }
@@ -304,6 +317,23 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
     events: () => uploadEventSink,
     log: app.log,
   });
+  // H-15: tag write, cover embed, templated atomic move, rescan, request link.
+  const imports = new ImportService({
+    db: database.db,
+    settings,
+    musicDir: config.musicDir,
+    stagingDir: config.stagingDir,
+    library,
+    mediaServer,
+    metadata,
+    requests,
+    availability,
+    events,
+    jobs,
+    log: app.log,
+    version,
+    ...deps.uploadImport,
+  });
   app.decorate('hearer', {
     database,
     secrets,
@@ -326,6 +356,7 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
     fulfillment,
     uploads: uploadsService,
     uploadReview,
+    imports,
   });
   // H-13: validate received uploads, and expire abandoned ones.
   jobs.define(
@@ -364,6 +395,7 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
         : {}),
     }),
   );
+  jobs.define(uploadImportJob({ imports }));
   if (deps.startJobs) {
     app.addHook('onReady', () => {
       jobs.start();

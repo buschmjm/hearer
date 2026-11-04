@@ -341,6 +341,27 @@ export class UploadReviewService {
     return this.detail(user, id);
   }
 
+  /** Admin retry of a FAILED import (staging was kept): back to APPROVED and queue it again. */
+  retryImport(user: AuthUser, id: string): UploadDetail {
+    const row = this.visibleRow(user, id);
+    if (row.status !== 'FAILED' || row.chosenJson === null || row.stagingPath === null) {
+      throw new HttpError(
+        409,
+        'not_retryable',
+        'Only a failed import with a staged file can be retried',
+      );
+    }
+    const updated = this.#deps.db
+      .update(uploads)
+      .set({ status: 'APPROVED', error: null })
+      .where(and(eq(uploads.id, id), eq(uploads.status, 'FAILED')))
+      .returning({ id: uploads.id })
+      .all();
+    if (updated.length === 0) throw new HttpError(409, 'not_retryable', 'The upload changed state');
+    this.#enqueueImport(id);
+    return this.detail(user, id);
+  }
+
   /** Approve every reviewable file of an album at once. */
   batchApprove(
     user: AuthUser,

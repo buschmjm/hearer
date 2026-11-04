@@ -77,6 +77,20 @@ export const uploadReviewRoutes: FastifyPluginCallbackZod = (app, _options, done
   );
 
   app.post(
+    '/uploads/:id/retry-import',
+    {
+      onRequest: [requirePermission(Permission.MANAGE_UPLOADS)],
+      schema: {
+        tags,
+        summary: 'Retry the import of an upload that failed',
+        params: uploadIdParamsSchema,
+        response: { 200: uploadDetailSchema },
+      },
+    },
+    (request) => review.retryImport(userOf(request), request.params.id),
+  );
+
+  app.post(
     '/uploads/:id/keep',
     {
       onRequest: [guard],
