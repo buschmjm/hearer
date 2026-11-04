@@ -52,7 +52,9 @@ import { LibraryService } from './services/library.ts';
 // H-11 requests
 import { FulfillmentRegistry } from './adapters/fulfillment/registry.ts';
 import { requestAvailabilityJob } from './jobs/requestAvailability.ts';
+import { REQUEST_POLL_INTERVAL_MS, REQUEST_POLL_JOB, requestPollJob } from './jobs/requestPoll.ts';
 import { requestSubmitJob } from './jobs/requestSubmit.ts';
+import { fulfillmentRoutes } from './routes/fulfillment.ts';
 import { EventBus } from './lib/events.ts';
 import { requestRoutes } from './routes/requests.ts';
 import { RequestsService } from './services/requests.ts';
@@ -130,6 +132,8 @@ export interface AppDeps {
   metadataOptions?: Partial<Omit<MusicBrainzOptions, 'db' | 'settings' | 'logger'>>;
   /** Library matching for badges. Defaults to the fuzzy index lookup (exact MBID, then name matches as 'possible'). */
   libraryLookup?: LibraryLookup;
+  /** Lidarr HTTP tuning (tests): fetch implementation and timeout. */
+  lidarrOptions?: { fetch?: typeof fetch; timeoutMs?: number };
   /** Catalog requests per user per minute (tests). */
   searchRateLimitMax?: number;
 }
@@ -230,7 +234,12 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
   // H-11: events, requests service and its jobs (`requests.availability` is enqueued by the sync).
   const availability = new AvailabilityMatcher(database.db, metadata);
   const events = new EventBus(app.log);
-  const fulfillment = new FulfillmentRegistry(settings);
+  const fulfillment = new FulfillmentRegistry({
+    settings,
+    metadata,
+    version,
+    lidarr: deps.lidarrOptions,
+  });
   const requests = new RequestsService({
     db: database.db,
     settings,
@@ -243,6 +252,9 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
   });
   jobs.define(requestSubmitJob(requests));
   jobs.define(requestAvailabilityJob({ requests, availability }));
+  // H-12: status polling for submitted requests (timeline visibility only).
+  jobs.define(requestPollJob(requests));
+  jobs.schedule({ type: REQUEST_POLL_JOB, every: REQUEST_POLL_INTERVAL_MS });
   app.decorate('hearer', {
     database,
     secrets,
@@ -380,6 +392,8 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
 
   // H-11: requests API.
   await app.register(requestRoutes, { prefix: API_PREFIX });
+  // H-12: fulfillment providers (list, Lidarr test and options).
+  await app.register(fulfillmentRoutes, { prefix: API_PREFIX });
 
   for (const plugin of deps.routes ?? []) {
     await app.register(plugin, { prefix: API_PREFIX });

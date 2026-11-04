@@ -68,19 +68,116 @@ Use `app.hearer.mediaServer.get()` to obtain the adapter for the stored `mediaSe
 
 ## FulfillmentProvider
 
-Copied from `docs/PLAN.md`; batch H-12 replaces this with the final, implemented contract.
+Source: `apps/server/src/adapters/fulfillment/{types,manual,lidarr,registry}.ts`.
 
 ```ts
 interface FulfillmentProvider {
   id: string;
   label: string;
-  supports: { track: boolean; album: boolean; artist: boolean };
-  configSchema: ZodSchema; // drives the settings form
-  submit(req: RequestRecord): Promise<{ ref: string; status: 'PROCESSING' | 'AWAITING_UPLOAD' }>;
-  poll?(ref: string): Promise<{ state: 'pending' | 'done' | 'failed'; detail?: string }>;
-  cancel?(ref: string): Promise<void>;
+  supports: { track: boolean; album: boolean; artist: boolean }; // may depend on settings
+  configSchema: ZodType; // validates the provider's settings; drives the settings form
+  submit(
+    request: RequestRecord,
+    options?: { signal? },
+  ): Promise<{ ref: string; status: 'PROCESSING' | 'AWAITING_UPLOAD'; note?: string }>;
+  poll?(ref: string, options?): Promise<{ state: 'pending' | 'done' | 'failed'; detail?: string }>;
+  cancel?(ref: string, options?): Promise<void>;
+  testConnection?(options?): Promise<{ ok: boolean; message?: string; version?: string }>;
+  describeConfig?(): Record<string, unknown>; // current config, secrets masked
 }
 ```
+
+`RequestRecord` is `{ id, type, mbid, parentMbid, title, artistName }` (`parentMbid` is a
+track's release group when known). `configJsonSchema(provider)` renders `configSchema` as JSON
+Schema (zod's `toJSONSchema`) for the web settings form.
+
+### Errors
+
+| Throw                    | Meaning                                                      | What the submit job does                                          |
+| ------------------------ | ------------------------------------------------------------ | ----------------------------------------------------------------- |
+| `ProviderSkipError`      | cannot handle this request (track policy, track on no album) | tries the next provider (Manual)                                  |
+| `ProviderTemporaryError` | network error, 5xx/429, an album Lidarr has not imported yet | rethrown; the runner retries with backoff (30 s base, 6 attempts) |
+| `ProviderPermanentError` | rejected key, incomplete settings, unknown artist/album      | request goes to FAILED with the message                           |
+| anything else            | unexpected                                                   | treated as temporary                                              |
+
+After the last attempt a still-failing request goes to FAILED with the error as the timeline
+note. An admin can fix the cause and press Retry (`POST /requests/:id/retry`).
+
+### Completion is never a provider's decision
+
+A provider only gets the request started. A request becomes AVAILABLE when the library index
+shows it (`requests.availability`, queued after every library sync), so music that arrives by any
+route (Lidarr, an upload, a file dropped into the folder) completes the request. `poll` exists for
+visibility: `requests.poll` runs every 5 minutes over PROCESSING requests and adds a timeline
+note when the provider's detail text changes (a download progressing, an import blocked). A
+`failed` poll result (a failed Lidarr search command) moves the request to FAILED.
+
+### Selection (`FulfillmentRegistry.select`)
+
+Providers are tried in order, Lidarr then Manual; the first that is **enabled** and whose
+`supports[type]` is true wins. `supports.track` of Lidarr is `trackPolicy === 'album'`. A provider
+can still decline at submit time with `ProviderSkipError`. When no enabled provider can take the
+request type (for example Lidarr only, with `trackPolicy: 'skip'`, and a track request) the
+request goes to **FAILED** with the note "No fulfillment provider is available for track
+requests". It does not sit in APPROVED silently: the failure is visible and notifies, and Retry
+works once the settings are fixed. Manual is enabled by default, so a stock install always has a
+provider.
+
+`GET /api/v1/fulfillment/providers` (MANAGE_SETTINGS) lists every provider with `enabled`,
+`supports`, `settingsPath` (e.g. `fulfillment.lidarr`), the JSON Schema (secret properties carry
+`"x-secret": true`) and the current config with secrets masked.
+
+### Manual
+
+`submit` returns `{ ref: 'manual:<requestId>', status: 'AWAITING_UPLOAD' }` and contacts nothing.
+The request waits for an upload that names it ("fulfills request"): the import calls
+`RequestsService.fulfillFromUpload(requestId, uploadId, { partial? })`, which records the upload
+and moves the request to AVAILABLE (or PARTIALLY_AVAILABLE). Hearer is fully useful with Manual
+alone.
+
+### Lidarr
+
+> **Unverified.** No live Lidarr was available. Endpoints, parameters and field names follow
+> Lidarr's OpenAPI document (`src/Lidarr.Api.V1/openapi.json`, develop branch, fetched when this
+> was written). The command payloads (`ArtistSearch {artistId}`, `AlbumSearch {albumIds}`) are not
+> described by that document and follow the Servarr wiki. The fixtures in
+> `apps/server/test/fixtures/lidarr/` are synthesized from the schema, and the mock server in
+> `test/helpers/lidarr-mock.ts` is a stand-in, so a real instance may differ. When one is available,
+> record real responses over the fixtures and drop this notice.
+
+Settings key `fulfillment.lidarr` (**disabled by default**): `enabled`, `url`, `apiKey` (secret,
+encrypted at rest, masked in the API), `rootFolder`, `qualityProfileId`, `metadataProfileId`,
+`trackPolicy: 'album' | 'skip'`. URL may include a sub-path; every call is `<url>/api/v1/...`
+with the `X-Api-Key` header (never a query parameter) and a 15 s timeout.
+
+| Request | Calls                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| artist  | `GET artist?mbId=<mbid>`. Unknown: `GET artist/lookup?term=lidarr:<mbid>`, then `POST artist` `{ foreignArtistId, artistName, qualityProfileId, metadataProfileId, rootFolderPath, monitored: true, monitorNewItems: 'all', addOptions: { monitor: 'all', searchForMissingAlbums: true } }` (Lidarr searches by itself). Known: `PUT artist/{id}` monitored, `PUT album/monitor` for all its albums, `POST command {name: 'ArtistSearch', artistId}`.                                                                       |
+| album   | `GET album?foreignAlbumId=<rg>`. Missing: `GET album/lookup?term=lidarr:<rg>` (names the artist), add the artist with `monitorNewItems: 'none'` and `addOptions: { monitor: 'none', searchForMissingAlbums: false }` if needed, then `GET album` again. Still absent (Lidarr is still refreshing the artist, or its metadata profile excludes the type) is a temporary error and the job retries with backoff. Then `PUT album/monitor { albumIds, monitored: true }` and `POST command { name: 'AlbumSearch', albumIds }`. |
+| track   | The parent release group (`request.parentMbid`, else `MetadataProvider.getRecording`) is requested as an album. `trackPolicy: 'skip'`, or a recording on no album, hands the request to Manual.                                                                                                                                                                                                                                                                                                                             |
+
+`provider_ref` is JSON `{ v: 1, kind, artistId, artistMbid, artistAdded, albumId?, albumMbid?, commandId? }`
+(never exposed by the API). `poll` reads `GET queue/details?albumIds=` (or `artistId=`) and
+`GET command/{id}`: a running download is `pending` with its progress, a stuck import is `pending`
+with Lidarr's message, a finished search with an empty queue is `done`, a `failed` command is
+`failed`. `cancel` unmonitors the album (`PUT album/monitor { monitored: false }`), or the artist
+when this request added it; an artist that was already in Lidarr is left alone. A cancel that cannot
+reach Lidarr still cancels the request and the timeline says so. `testConnection` is
+`GET system/status`.
+
+Admin routes (MANAGE_SETTINGS), following the media server's masked-secret convention:
+
+- `POST /api/v1/settings/fulfillment/lidarr/test`: body is the form's Lidarr settings, a masked
+  `apiKey` (`********`) means the stored one. Always 200 `{ ok, version?, message? }`.
+- `GET /api/v1/settings/fulfillment/lidarr/options`: quality profiles, metadata profiles and root
+  folders of the **saved** Lidarr (`qualityprofile`, `metadataprofile`, `rootfolder`); save URL and key
+  first. 400 `provider_rejected` for a missing or rejected key, 502 `provider_unavailable` when
+  Lidarr is unreachable.
+
+Known limits: an album excluded by the chosen metadata profile never appears in Lidarr and the
+request fails after the retries with a message saying so; a Lidarr search that finds nothing leaves
+the request in PROCESSING (the poll note says "finished and nothing is downloading") until an admin
+cancels or retries it.
 
 ## Jellyfin
 

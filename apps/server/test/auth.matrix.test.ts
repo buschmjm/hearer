@@ -159,7 +159,7 @@ describe('route-level permission matrix', () => {
       }
     }
     expect(failures).toEqual([]);
-  });
+  }, 60_000); // one login per route: grows with the API surface
 
   it('answers 403 to an API key whose owner has no permissions', async () => {
     const routes = await harnessWithRoutes();

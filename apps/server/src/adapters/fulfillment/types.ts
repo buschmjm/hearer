@@ -1,5 +1,5 @@
 import type { RequestType } from '@hearer/shared';
-import type { ZodType } from 'zod';
+import { toJSONSchema, type ZodType } from 'zod';
 
 /** The slice of a request a provider needs. */
 export interface RequestRecord {
@@ -84,4 +84,12 @@ export class ProviderPermanentError extends Error {
     super(message, options);
     this.name = 'ProviderPermanentError';
   }
+}
+
+/**
+ * The provider's config schema as JSON Schema (draft 2020-12), for the settings form. Uses the
+ * input side of the schema so defaults show as optional fields with a `default`.
+ */
+export function configJsonSchema(provider: Pick<FulfillmentProvider, 'configSchema'>) {
+  return toJSONSchema(provider.configSchema, { io: 'input', unrepresentable: 'any' });
 }

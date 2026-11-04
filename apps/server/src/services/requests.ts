@@ -161,6 +161,8 @@ interface Committed {
   note: string | null;
 }
 
+const escapeLike = (text: string): string => text.replace(/[\\%_]/g, (c) => `\\${c}`);
+
 const invalidTransition = (from: RequestStatus, to: RequestStatus): HttpError =>
   new HttpError(409, 'invalid_transition', `A ${from} request cannot become ${to}`, { from, to });
 
@@ -659,6 +661,38 @@ export class RequestsService {
       .where(ids ? and(statusCondition, inArray(requests.id, [...ids])) : statusCondition)
       .orderBy(asc(requests.createdAt))
       .all();
+  }
+
+  /** PROCESSING requests that a provider took (for the poll job). */
+  processing(): RequestRow[] {
+    return this.#db
+      .select()
+      .from(requests)
+      .where(eq(requests.status, 'PROCESSING'))
+      .orderBy(asc(requests.createdAt))
+      .all();
+  }
+
+  /**
+   * Add `prefix + text` to the timeline unless it is what the last note with this prefix said.
+   * Returns whether a note was written.
+   */
+  addNoteIfChanged(requestId: string, prefix: string, text: string): boolean {
+    const last = this.#db
+      .select({ note: requestEvents.note })
+      .from(requestEvents)
+      .where(
+        and(
+          eq(requestEvents.requestId, requestId),
+          sql`${requestEvents.note} LIKE ${`${escapeLike(prefix)}%`} ESCAPE '\\'`,
+        ),
+      )
+      .orderBy(desc(requestEvents.id))
+      .limit(1)
+      .get();
+    if (last?.note === `${prefix}${text}`) return false;
+    this.addNote(requestId, `${prefix}${text}`);
+    return true;
   }
 
   /** Re-queue submit for APPROVED requests that have sat untouched (crash between commit and enqueue). */
