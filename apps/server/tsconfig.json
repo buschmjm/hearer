@@ -4,5 +4,5 @@
     "erasableSyntaxOnly": true,
     "rewriteRelativeImportExtensions": false
   },
-  "include": ["src", "test", "vitest.config.ts"]
+  "include": ["src", "test", "scripts", "vitest.config.ts", "drizzle.config.ts"]
 }
