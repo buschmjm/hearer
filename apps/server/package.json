@@ -7,7 +7,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "node --watch src/index.ts",
-    "build": "rm -rf dist && esbuild src/index.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist/index.js --sourcemap --external:better-sqlite3 --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\" && cp -r drizzle dist/drizzle",
+    "build": "rm -rf dist && esbuild src/index.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist/index.js --sourcemap --external:better-sqlite3 --external:argon2 --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\" && cp -r drizzle dist/drizzle",
     "start": "node dist/index.js",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json",
@@ -16,8 +16,11 @@
     "db:check": "node scripts/db-check.ts"
   },
   "dependencies": {
+    "@fastify/cookie": "catalog:",
+    "@fastify/rate-limit": "catalog:",
     "@fastify/swagger": "catalog:",
     "@hearer/shared": "workspace:*",
+    "argon2": "catalog:",
     "better-sqlite3": "catalog:",
     "drizzle-orm": "catalog:",
     "fastify": "catalog:",

@@ -235,3 +235,60 @@ All matched files use Prettier code style!
 **Next:** H-06 (auth), H-10 (library sync registers `library.sync` via `runner.define` + `runner.schedule`).
 
 **Open questions:** `dailyAtHour` uses the server's local time zone (container TZ, usually UTC). Feature batches should call `app.hearer.jobs.define(...)` / `.schedule(...)` from `buildApp` before `ready`.
+
+## H-06a — Auth core: passwords, sessions, API keys, guards, users service, auth routes
+
+**Status:** done
+
+**Files (H-06a):** `packages/shared/src/dto/{auth,users}.ts` (+ `index.ts` export), `apps/server/src/auth/{password,sessions,apikeys,permissions,guard,plugin}.ts`, `src/services/users.ts`, `src/routes/auth.ts`, `src/lib/{http-error,constants}.ts`, wiring in `src/app.ts` and `src/config.ts`, tests `test/auth.sessions.test.ts`, `test/auth.login.test.ts`, `test/helpers/auth.ts`, `packages/shared/test/dto.test.ts`.
+
+**Shipped:**
+
+- **Passwords:** `argon2` 0.45.2 (catalog-pinned, in `onlyBuiltDependencies`, `--external:argon2` in the esbuild build, production dependency, and added to the Dockerfile native-module check). argon2id with OWASP's first profile (m=19456 KiB, t=2, p=1). Unknown or non-local accounts burn a dummy verification so timing does not reveal usernames; weak stored hashes are rehashed on login.
+- **Sessions:** cookie carries 32 random bytes (base64url); the DB stores only its SHA-256 as `sessions.id`. Cookie `hearer_session`: httpOnly, SameSite=Lax, Path=/, Secure when the request is https (trust proxy aware) or `BASE_URL`/`general.applicationUrl` is https. Sliding 30-day expiry, refreshed (and the cookie re-issued) at most once per day. ip and user agent recorded. Logout deletes the session; `POST /auth/logout-all`; a password change revokes all other sessions; an admin password reset and user deletion revoke the target's sessions.
+- **CSRF:** synchronizer token derived per session (`HMAC-SHA256(key = raw session id, "hearer-csrf-v1")`, nothing stored). Returned by login, first-admin creation and `GET /auth/me`; required in `x-csrf-token` on POST/PUT/PATCH/DELETE for cookie-authenticated requests, compared in constant time. API-key requests are exempt. Only login and first-admin creation opt out (`config.csrfExempt`) because they mint a session. The design is documented in the header comment of `auth/sessions.ts`.
+- **API keys:** `hrr_` + 32 random bytes, SHA-256 stored plus an 8-char display prefix; `X-Api-Key` or `Authorization: Bearer hrr_...`; `last_used_at` written at most every 5 min; max 25 per user. A presented but invalid key never falls back to the cookie. Key and password management require an interactive session (`session_required` 403 for keys), so a leaked key cannot mint more keys or change the password.
+- **Guards:** `requireAuth()`, `requirePermission(bit | bits, {type})`, `requireSession()` as `onRequest` hooks; `request.user` / `request.auth` are typed by module augmentation. 401 and 403 use the error envelope. `app.hearer` now also exposes `users`, `sessions`, `apiKeys`, `auth` helpers.
+- **Users service:** CRUD, search, atomic `createFirstAdmin`, last-admin protection (`last_admin` 409) inside write transactions, `findOrCreateExternalUser(authType, externalId, profile)` for the Jellyfin/OIDC batches (refreshes profile, de-duplicates usernames with a numeric suffix, applies `general.defaultPermissions`).
+- **Auth routes:** `POST /auth/login` (respects `auth.localEnabled`), `POST /auth/logout`, `POST /auth/logout-all`, `GET /auth/me`, `POST /auth/password`, `GET/POST /auth/api-keys`, `DELETE /auth/api-keys/:id`. Login, first-admin and password change are rate limited with `@fastify/rate-limit` (10/min/IP; env `AUTH_RATE_LIMIT_MAX`, tests lower it). `@fastify/cookie` 11.1.5, `@fastify/rate-limit` 11.2.2.
+- **Shared DTOs:** zod schemas for login/session/me/password/API keys/setup status and for users (never include the hash).
+
+**Verify:** see H-06b (single combined run): `pnpm --filter server test -- auth` and the full suite.
+
+**Deviations:** guards are `onRequest` hooks rather than `preHandler`, so authorization runs before body validation (anonymous callers always get 401, never a 400 that reveals the schema). `HttpError` responses with status >= 500 (the 503 `setup_required`) now pass through the error handler instead of being masked as 500; unexpected errors are still masked. DECISIONS.md not amended.
+
+**Next:** H-06b (included below), then H-07.
+
+**Open questions:** none.
+
+## H-06b — Setup wizard API, settings API, users API, setup gating, route matrix
+
+**Status:** done
+
+**Files (H-06b):** `apps/server/src/routes/{setup,settings,users}.ts`, `test/auth.setup.test.ts`, `test/auth.users.test.ts`, `test/auth.matrix.test.ts`; `test/health.test.ts` adjusted (its custom routes now need the setup gate lifted).
+
+**Shipped:**
+
+- **Setup:** `GET /setup/status` (public: `setupComplete`, `hasAdmin`, `steps`, and library/staging directory checks `exists`/`writable`; the paths are only reported while setup is incomplete). `POST /setup/admin` creates the first local admin only when no users exist; the check and insert share one `BEGIN IMMEDIATE` transaction, so 6 parallel calls produce exactly one 201 and five 409s. It signs the admin in. `GET|PUT /setup/:section` (general, library, uploads; admin only, 409 once complete), `POST /setup/complete` (admin; 400 `directories_not_ready` unless both directories exist and are writable).
+- **Gate:** until setup completes, every `/api/v1` route except health, auth, setup and openapi.json returns 503 `setup_required` (404s unaffected).
+- **Settings:** `GET /settings`, `GET|PUT /settings/:key` (MANAGE_SETTINGS), validated by the shared catalog, secrets always masked, masked value re-sent keeps the secret. Safeguards: `general.setupComplete` can only change via `/setup/complete`; `auth` cannot disable every sign-in method (`would_lock_out`). PUT is a full replace (omitted fields reset to defaults).
+- **Users:** `GET /users` (paginated, `q` search over username/email/display name with LIKE escaping), `GET /users/:id`, `POST /users`, `PATCH /users/:id`, `DELETE /users/:id`, `POST /users/:id/password` (MANAGE_USERS). Escalation guards: a non-admin may only grant bits they hold, and may not act on users holding privileged bits (anything beyond request/upload basics) they lack, so a delegated manager cannot touch administrators. You cannot delete yourself or reset your own password through the admin route; the last admin cannot be deleted or demoted.
+- **Tests (210 server, 15 shared):** setup flow including the race, 503 gating, login success/failure/disabled/rate limit/cookie flags (including Secure via proxy and via https URL), logout, expiry, sliding refresh, CSRF required/accepted/rejected/exempt, API keys (both header forms, CSRF exempt, deleted key fails, session-only management), password change revoking other sessions, role matrix (anon, user, usersOnly, settingsOnly, manager, admin) over every users/settings route, escalation attempts, last-admin protection, masked secrets. **Route matrix (PLAN acceptance #2):** an `onRoute` hook (new `deps.onRoute`) enumerates the real route table; every non-allowlisted route must answer 401 anonymously, 403 for a no-permission session user and for a no-permission API key, 503 before setup; a self-test proves an unguarded route is caught.
+
+**Verify:** `pnpm --filter server test -- auth && pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm --filter server db:check && pnpm format:check` (full run repeated 3 times, no flakes)
+
+```text
+packages/shared test:       Tests  15 passed (15)
+apps/server test:  Test Files  14 passed (14)
+apps/server test:       Tests  210 passed (210)
+db:check ok: schema matches 1 committed migration(s)
+All matched files use Prettier code style!
+```
+
+Smoke (`pnpm --filter server build`, temp `DATA_DIR`, `node dist/index.js`, curl with a cookie jar): `/setup/status` showed both directories writable; `/users` gave 503 `setup_required`; `POST /setup/admin` gave 201 with an HttpOnly cookie; `POST /auth/logout` without the CSRF header gave 403; login gave 200; `GET /auth/me` showed `authMethod: session` plus the CSRF token; `POST /setup/complete` without the header gave 403 `csrf_invalid`, with `x-csrf-token` 200; `GET /users?q=adm` gave 200; `GET /settings/mediaServer` showed the masked key; an API key created through the session then authenticated `GET /auth/me` via `Authorization: Bearer`. The bundled build loads argon2 as an external module.
+
+**Deviations:** no schema change and no new migration. `POST /auth/logout` is deliberately public (it clears whatever cookie it gets); the matrix allowlists it. DECISIONS.md not amended.
+
+**Next:** H-07 (Jellyfin login: use `users.findOrCreateExternalUser('jellyfin', ...)`, `auth.startSession(request, reply, userId)` and `app.hearer.settings`). Later route batches add `onRequest: [requirePermission(...)]` and must extend the matrix allowlists only when a route is truly public.
+
+**Open questions:** `PUT /settings/:key` is full-replace; the web settings UI must send the whole section (masked secrets echoed back). Also, with `auth.localEnabled=false` and no other provider enabled the API refuses the change, but an operator who disables local auth and later loses the external provider must recover through the database.

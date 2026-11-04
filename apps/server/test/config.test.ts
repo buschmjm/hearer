@@ -15,6 +15,7 @@ describe('loadConfig', () => {
       logFormat: 'json',
       secret: undefined,
       trustProxy: false,
+      authRateLimitMax: 10,
     });
   });
 

@@ -9,6 +9,14 @@ import { runMigrations } from '../src/db/migrate.ts';
 const config = loadConfig({ NODE_ENV: 'test', LOG_LEVEL: 'silent' });
 
 let app: FastifyInstance;
+
+/** Feature routes answer 503 until the setup wizard is done; these tests are not about that. */
+function skipSetupGate(): void {
+  app.hearer.settings.set('general', {
+    ...app.hearer.settings.get('general'),
+    setupComplete: true,
+  });
+}
 afterEach(async () => {
   await app.close();
 });
@@ -150,6 +158,7 @@ describe('OpenAPI and errors', () => {
         },
       ],
     });
+    skipSetupGate();
     const bad = await app.inject({ method: 'POST', url: '/api/v1/echo', payload: { name: 5 } });
     expect(bad.statusCode).toBe(400);
     const body = bad.json<{ error: { code: string; message: string; details: unknown[] } }>();
@@ -172,6 +181,7 @@ describe('OpenAPI and errors', () => {
         },
       ],
     });
+    skipSetupGate();
     const res = await app.inject({ method: 'GET', url: '/api/v1/boom' });
     expect(res.statusCode).toBe(500);
     expect(res.json()).toEqual({
