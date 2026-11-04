@@ -107,6 +107,24 @@ export class UsersService {
     return this.#db.select().from(users).where(byLowerUsername(username)).get();
   }
 
+  /** The account for an identity-provider subject, if one exists. */
+  getExternal(authType: Exclude<AuthType, 'local'>, externalId: string): UserRow | undefined {
+    return this.#db
+      .select()
+      .from(users)
+      .where(and(eq(users.authType, authType), eq(users.externalId, externalId)))
+      .get();
+  }
+
+  /** Every account with this email (case-insensitive). Emails are not unique in the schema. */
+  findByEmail(email: string): UserRow[] {
+    return this.#db
+      .select()
+      .from(users)
+      .where(sql`lower(${users.email}) = ${email.toLowerCase()}`)
+      .all();
+  }
+
   hasAnyUser(): boolean {
     return this.#db.select({ id: users.id }).from(users).limit(1).get() !== undefined;
   }

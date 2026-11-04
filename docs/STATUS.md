@@ -326,3 +326,40 @@ Smoke (`pnpm --filter server build`, temp `DATA_DIR`, `node dist/index.js`, curl
 **Next:** H-10 (library sync can use `app.hearer.mediaServer.get().iterateLibrary`).
 
 **Open questions:** (1) Verify `MusicBrainzTrack` vs `MusicBrainzRecording` on a real 10.11 server. (2) Jellyfin item paths are returned as Jellyfin sees them; if its mount differs from Hearer's `MUSIC_DIR`, `notifyPathsChanged` and path matching need a configurable prefix mapping. (3) Jellyfin does not expose email, so Jellyfin users have none.
+
+## H-08 — OIDC login
+
+**Status:** done
+
+**Files:** `apps/server/src/auth/oidc.ts`, `src/routes/oidc.ts`, `packages/shared/src/settings.ts` (`auth.oidc`), small edits to `app.ts` (one registration block), `routes/setup.ts` (gate), `services/users.ts` (`getExternal`, `findByEmail`), tests `test/oidc.{flow,policy,config}.test.ts`, `test/helpers/mock-idp.ts`, and the public allowlist in `test/auth.matrix.test.ts`. Deps: `openid-client` 6.8.9 and `jose` 6.2.15 (catalog-pinned; both production dependencies).
+
+**Shipped:**
+
+- Generic OIDC (Authorization Code + PKCE S256 + state + nonce) on `openid-client` v6's functional API. Discovery is cached for 1 h per (issuer, client id, secret, allowInsecureHttp) so a settings change re-discovers; a failed discovery is remembered for 30 s. The ID token algorithm is taken from discovery (RS256 default, ES256 etc. work). Client auth is `client_secret_basic` (or none when no secret is set).
+- **ID token signature:** openid-client (like OIDC Core 3.1.3.7) does not verify the signature of a token received directly from the token endpoint, and a test proved a token signed by a different key was accepted. Hearer therefore also verifies it with `jose` against the IdP's JWKS (issuer, audience, pinned algorithm). `jwks_uri` must be https unless `allowInsecureHttp` is on.
+- **Transaction:** state, nonce, PKCE verifier, `returnTo`, `createdAt` sealed with the app SecretBox (AES-256-GCM) into cookie `hearer_oidc_tx` (httpOnly, SameSite=Lax, Path `/api/v1/auth/oidc`, 10 min, Secure per the same rule as the session cookie). Single use: the state is remembered in process memory once redeemed (single-instance deployment), and the cookie is cleared on success and failure. Concurrent logins in two tabs share one cookie, so the last started one wins.
+- Routes: `GET /auth/oidc/config`, `GET /auth/oidc/login?returnTo=`, `GET /auth/oidc/callback` (public, rate limited), `POST /settings/auth/oidc/test` and `GET /settings/auth/oidc/redirect-uri` (MANAGE_SETTINGS). Callback errors redirect to `/login?error=<code>` with a fixed code (`invalid_transaction`, `transaction_expired`, `transaction_replayed`, `state_mismatch`, `access_denied`, `not_allowed`, `signup_disabled`, `link_denied`, `oidc_disabled`, `login_failed`, `oidc_unavailable`); details go to the log only. Disabled OIDC: login answers 404 `oidc_disabled`, callback redirects with `oidc_disabled`.
+- **Gate:** these routes live under the open `auth` prefix but the setup gate now special-cases `/api/v1/auth/oidc`, so they answer 503 `setup_required` until the wizard finishes (matrix test updated, three routes added to the public allowlist).
+- **Settings (`auth.oidc`)** new fields: `groupsClaim`, `adminGroup`, `allowedGroups[]`, `linkExistingByEmail` (false), `linkAdminAccounts` (false), `allowInsecureHttp` (false); existing `usernameClaim`/`emailClaim` now non-empty. `adminGroup`/`allowedGroups` require `groupsClaim` (validated). Redirect URI = `general.applicationUrl`, else `BASE_URL`, else the request origin, plus `/api/v1/auth/oidc/callback`; register it at the IdP. It is normalized through `URL` (a literal `:80`/`:443` is dropped, because openid-client sends the normalized form).
+- **Account policy:** `allowedGroups` gates every login (existing users too). Known `sub` signs in as that user and refreshes name/avatar; email is stored/refreshed only when `email_verified` is true. With `linkExistingByEmail` off (default) the same email yields a **separate** account (nothing is linked or denied). With it on, a verified email matching exactly one local/Jellyfin account signs in as that account (the row is not rewritten); several matches or an ADMIN account (without `linkAdminAccounts`) are denied (`link_denied`). Account-takeover risk: an IdP that lets users set an unverified or someone else's email could take over the matching local account; leave it off unless the IdP verifies emails. `autoCreateUsers=false` denies unknown users. Members of `adminGroup` get ADMIN on login (grant only, never revoked automatically). Group names are compared after stripping a leading `/` (Keycloak paths).
+- Usernames are sanitized to the shared username rules (`preferred_username`, else email, else `sub`) and de-duplicated by the users service.
+- Cleartext IdPs: `auth.oidc.allowInsecureHttp` (and the same flag in the test endpoint body) enables openid-client's documented `allowInsecureRequests`; the tests use it with a local mock IdP.
+
+**Verify:** `pnpm --filter server test -- oidc` (the filter arg is ignored by vitest-run, the whole server suite runs) plus `pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm --filter server db:check && pnpm format:check`
+
+```text
+packages/shared test:       Tests  15 passed (15)
+apps/server test:  Test Files  17 passed (17)
+apps/server test:       Tests  285 passed (285)
+db:check ok: schema matches 1 committed migration(s)
+Checking formatting...
+All matched files use Prettier code style!
+```
+
+The mock IdP (`test/helpers/mock-idp.ts`) is a real node:http server on port 0 with discovery, JWKS (jose keys), `/authorize` and `/token` (client auth, PKCE S256 check, single-use codes, signed RS256/ES256 ID tokens). `pnpm --filter server build` also bundles fine.
+
+**Deviations:** no schema change; DECISIONS.md not amended. Claims come from the ID token only (no userinfo call), so an IdP that omits profile claims from the ID token needs them added there (Keycloak includes them with the default scopes).
+
+**Next:** H-07 / web login UI should read `GET /auth/oidc/config`, link the button to `/api/v1/auth/oidc/login?returnTo=...`, and render `/login?error=<code>`; the settings UI should show `GET /settings/auth/oidc/redirect-uri` and call the test endpoint.
+
+**Open questions:** none.

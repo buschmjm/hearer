@@ -24,7 +24,9 @@
     "better-sqlite3": "catalog:",
     "drizzle-orm": "catalog:",
     "fastify": "catalog:",
+    "jose": "catalog:",
     "fastify-type-provider-zod": "catalog:",
+    "openid-client": "catalog:",
     "pino": "catalog:",
     "pino-pretty": "catalog:",
     "zod": "catalog:"
