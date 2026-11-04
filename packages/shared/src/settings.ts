@@ -102,12 +102,20 @@ const uploads = z.object({
     .default(['flac', 'mp3', 'm4a', 'ogg', 'opus', 'wav', 'aiff']),
   autoApproveThreshold: z.number().min(0).max(1).default(0.9),
   coverMaxPx: z.number().int().min(100).max(10000).default(1200),
+  /**
+   * Who may override a DUPLICATE verdict ("keep as alternate version"). Users with
+   * MANAGE_UPLOADS always may. When true, an uploader with UPLOAD may also override their own
+   * duplicates. Default false: only managers.
+   */
+  allowDuplicateOverride: z.boolean().default(false),
 });
 
 const metadata = z.object({
   musicBrainzBaseUrl: z.url().default('https://musicbrainz.org/ws/2'),
   coverArtBaseUrl: z.url().default('https://coverartarchive.org'),
   acoustIdApiKey: z.string().default(''),
+  /** AcoustID web service base URL (a mirror, or a test double). */
+  acoustIdBaseUrl: z.url().default('https://api.acoustid.org/v2'),
   /** How long MusicBrainz responses stay fresh in the cache. */
   cacheTtl: z
     .object({
