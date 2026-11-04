@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { authMethodsQuery, useAuth, useSignOut } from '../api/auth.ts';
 import { visibleNav, type NavItem } from '../lib/nav.ts';
 import { Brand } from './Logo.tsx';
+import { ToastProvider } from './Toast.tsx';
 import { ThemeToggle } from './ThemeToggle.tsx';
 import { cx } from '../lib/cx.ts';
 
@@ -175,49 +176,51 @@ export function Layout() {
   const items = visibleNav(user?.permissions ?? 0);
 
   return (
-    <div className="min-h-dvh lg:grid lg:grid-cols-[16.5rem_minmax(0,1fr)]">
-      <a
-        href="#main"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-lg focus:bg-accent focus:px-3 focus:py-2 focus:text-accent-fg"
-      >
-        Skip to content
-      </a>
+    <ToastProvider>
+      <div className="min-h-dvh lg:grid lg:grid-cols-[16.5rem_minmax(0,1fr)]">
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-lg focus:bg-accent focus:px-3 focus:py-2 focus:text-accent-fg"
+        >
+          Skip to content
+        </a>
 
-      <aside className="sticky top-0 hidden h-dvh flex-col border-r border-line bg-surface/70 p-4 backdrop-blur lg:flex">
-        <Link to="/" className="mb-6 px-2 pt-1" aria-label={`${title} home`}>
-          <Brand title={title} />
-        </Link>
-        <nav aria-label="Main navigation" className="flex flex-1 flex-col gap-1">
-          {items.map((item) => (
-            <SideNavLink key={item.to} item={item} />
-          ))}
-        </nav>
-        <UserMenu placement="up" />
-      </aside>
-
-      <div className="flex min-w-0 flex-col">
-        <header className="sticky top-0 z-20 flex items-center justify-between border-b border-line bg-bg/85 px-4 py-2.5 backdrop-blur lg:hidden">
-          <Link to="/" aria-label={`${title} home`}>
+        <aside className="sticky top-0 hidden h-dvh flex-col border-r border-line bg-surface/70 p-4 backdrop-blur lg:flex">
+          <Link to="/" className="mb-6 px-2 pt-1" aria-label={`${title} home`}>
             <Brand title={title} />
           </Link>
-          <UserMenu placement="down" />
-        </header>
-        <main
-          id="main"
-          className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 pb-28 lg:px-10 lg:py-10 lg:pb-10"
-        >
-          <Outlet />
-        </main>
-      </div>
+          <nav aria-label="Main navigation" className="flex flex-1 flex-col gap-1">
+            {items.map((item) => (
+              <SideNavLink key={item.to} item={item} />
+            ))}
+          </nav>
+          <UserMenu placement="up" />
+        </aside>
 
-      <nav
-        aria-label="Mobile navigation"
-        className="fixed inset-x-0 bottom-0 z-20 flex border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
-      >
-        {items.map((item) => (
-          <BottomNavLink key={item.to} item={item} />
-        ))}
-      </nav>
-    </div>
+        <div className="flex min-w-0 flex-col">
+          <header className="sticky top-0 z-20 flex items-center justify-between border-b border-line bg-bg/85 px-4 py-2.5 backdrop-blur lg:hidden">
+            <Link to="/" aria-label={`${title} home`}>
+              <Brand title={title} />
+            </Link>
+            <UserMenu placement="down" />
+          </header>
+          <main
+            id="main"
+            className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 pb-28 lg:px-10 lg:py-10 lg:pb-10"
+          >
+            <Outlet />
+          </main>
+        </div>
+
+        <nav
+          aria-label="Mobile navigation"
+          className="fixed inset-x-0 bottom-0 z-20 flex border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+        >
+          {items.map((item) => (
+            <BottomNavLink key={item.to} item={item} />
+          ))}
+        </nav>
+      </div>
+    </ToastProvider>
   );
 }

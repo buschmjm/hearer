@@ -14,17 +14,15 @@ import { ensureSetupStatus } from './api/setup.ts';
 import { ErrorFallback, NotFound } from './components/ErrorPages.tsx';
 import { Layout } from './components/Layout.tsx';
 import { safeReturnTo } from './lib/returnTo.ts';
+import { SEARCH_TYPES } from '@hearer/shared';
+import { AlbumPage } from './routes/album.tsx';
+import { ArtistPage } from './routes/artist.tsx';
 import { HomePage } from './routes/home.tsx';
 import { LoginPage } from './routes/login.tsx';
+import { SearchPage } from './routes/search.tsx';
 import { SetupPage } from './routes/setup.tsx';
-import {
-  AccountPage,
-  AdminPage,
-  ApiKeysPage,
-  RequestsPage,
-  SearchPage,
-  UploadPage,
-} from './routes/stubs.tsx';
+import { AccountPage, AdminPage, ApiKeysPage, RequestsPage, UploadPage } from './routes/stubs.tsx';
+import { TrackPage } from './routes/track.tsx';
 
 /*
  * Routes are declared in code (no generated route tree). To add a page: create a component under
@@ -93,8 +91,35 @@ const indexRoute = createRoute({ getParentRoute: () => appRoute, path: '/', comp
 const searchRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/search',
-  validateSearch: z.object({ q: z.string().optional().catch(undefined) }),
-  component: SearchPage,
+  validateSearch: z.object({
+    q: z.string().optional().catch(undefined),
+    type: z.enum(SEARCH_TYPES).optional().catch(undefined),
+  }),
+  component: function Search() {
+    const { q, type } = searchRoute.useSearch();
+    return <SearchPage q={q} type={type ?? 'album'} />;
+  },
+});
+const artistRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/artists/$mbid',
+  component: function Artist() {
+    return <ArtistPage mbid={artistRoute.useParams().mbid} />;
+  },
+});
+const albumRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/albums/$mbid',
+  component: function Album() {
+    return <AlbumPage mbid={albumRoute.useParams().mbid} />;
+  },
+});
+const trackRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/tracks/$mbid',
+  component: function Track() {
+    return <TrackPage mbid={trackRoute.useParams().mbid} />;
+  },
 });
 const requestsRoute = createRoute({
   getParentRoute: () => appRoute,
@@ -128,6 +153,9 @@ const routeTree = rootRoute.addChildren([
   appRoute.addChildren([
     indexRoute,
     searchRoute,
+    artistRoute,
+    albumRoute,
+    trackRoute,
     requestsRoute,
     uploadRoute,
     adminRoute,
