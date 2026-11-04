@@ -43,6 +43,11 @@ import { MusicBrainzProvider, type MusicBrainzOptions } from './adapters/metadat
 import type { MetadataProvider } from './adapters/metadata/types.ts';
 import { searchRoutes } from './routes/search.ts';
 import { BadgeService, type LibraryLookup } from './services/badges.ts';
+// H-10 library index + availability
+import { registerLibrarySync } from './jobs/librarySync.ts';
+import { libraryRoutes } from './routes/library.ts';
+import { AvailabilityMatcher, FuzzyLibraryLookup } from './services/availability.ts';
+import { LibraryService } from './services/library.ts';
 
 export { API_PREFIX };
 const JOB_SHUTDOWN_GRACE_MS = 5_000;
@@ -65,6 +70,10 @@ declare module 'fastify' {
       metadata: MetadataProvider;
       /** Library and request badges for catalog items. */
       badges: BadgeService;
+      /** Library index sync and path mapping (H-10). */
+      library: LibraryService;
+      /** Request availability evaluation against the library index (H-10). */
+      availability: AvailabilityMatcher;
     };
   }
 }
@@ -105,7 +114,7 @@ export interface AppDeps {
   metadata?: MetadataProvider;
   /** MusicBrainz client tuning (tests): limiter, fetch, clock, retry backoff. */
   metadataOptions?: Partial<Omit<MusicBrainzOptions, 'db' | 'settings' | 'logger'>>;
-  /** Library matching for badges. Defaults to exact MBID matches; H-10 supplies a fuzzy one. */
+  /** Library matching for badges. Defaults to the fuzzy index lookup (exact MBID, then name matches as 'possible'). */
   libraryLookup?: LibraryLookup;
   /** Catalog requests per user per minute (tests). */
   searchRateLimitMax?: number;
@@ -186,6 +195,24 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
   const settings = new SettingsService(database.db, secrets, app.log);
   const sessions = new SessionService(database.db, deps.auth);
   const apiKeys = new ApiKeyService(database.db, deps.auth?.now);
+  const mediaServer = new MediaServerRegistry(
+    settings,
+    secrets,
+    version,
+    deps.mediaServerTimeoutMs,
+  );
+  const metadata =
+    deps.metadata ??
+    new MusicBrainzProvider({
+      db: database.db,
+      settings,
+      logger: app.log,
+      version,
+      ...deps.metadataOptions,
+    });
+  const library = new LibraryService({ db: database.db, settings, mediaServer });
+  // H-10: library.sync job + schedules.
+  registerLibrarySync(jobs, library);
   app.decorate('hearer', {
     database,
     secrets,
@@ -195,17 +222,14 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
     sessions,
     apiKeys,
     auth: createAuthHelpers({ config, settings, sessions, rateLimitMax: deps.auth?.rateLimitMax }),
-    mediaServer: new MediaServerRegistry(settings, secrets, version, deps.mediaServerTimeoutMs),
-    metadata:
-      deps.metadata ??
-      new MusicBrainzProvider({
-        db: database.db,
-        settings,
-        logger: app.log,
-        version,
-        ...deps.metadataOptions,
-      }),
-    badges: new BadgeService(database.db, deps.libraryLookup),
+    mediaServer,
+    metadata,
+    badges: new BadgeService(
+      database.db,
+      deps.libraryLookup ?? new FuzzyLibraryLookup(database.db),
+    ),
+    library,
+    availability: new AvailabilityMatcher(database.db, metadata),
   });
   if (deps.startJobs) {
     app.addHook('onReady', () => {
@@ -317,6 +341,9 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
       prefix: API_PREFIX,
     },
   );
+
+  // H-10: library status and manual sync.
+  await app.register(libraryRoutes, { prefix: API_PREFIX });
 
   for (const plugin of deps.routes ?? []) {
     await app.register(plugin, { prefix: API_PREFIX });

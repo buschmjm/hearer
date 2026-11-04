@@ -3,11 +3,27 @@ import { and, desc, inArray, ne } from 'drizzle-orm';
 import type { Db } from '../db/client.ts';
 import { libraryItems, requests } from '../db/schema.ts';
 
+/**
+ * Names for fuzzy matching, keyed by MusicBrainz id. Callers that have the catalog items at hand
+ * (search results, detail pages) pass these so a lookup can answer 'possible' for items whose
+ * library copy carries no MusicBrainz ids. Optional: an id without a hint only matches exactly.
+ */
+export interface CatalogHints {
+  artists?: ReadonlyMap<string, { name: string }>;
+  /** `artists` lists alternative credit spellings (joined credit, first credit). */
+  albums?: ReadonlyMap<string, { artists: readonly string[]; title: string }>;
+  tracks?: ReadonlyMap<
+    string,
+    { artists: readonly string[]; title: string; durationMs: number | null }
+  >;
+}
+
 /** MusicBrainz ids to check, grouped by what they identify. */
 export interface CatalogIds {
   artists: readonly string[];
   albums: readonly string[];
   tracks: readonly string[];
+  hints?: CatalogHints | undefined;
 }
 
 export interface LibraryStatuses {
@@ -18,8 +34,8 @@ export interface LibraryStatuses {
 
 /**
  * Answers "is this in the library?" for a page of ids at once. Ids absent from the result
- * count as 'no'. H-10 adds a fuzzy implementation that can also answer 'possible'; routes only
- * depend on this interface.
+ * count as 'no'. `MbidLibraryLookup` answers exact matches only; `FuzzyLibraryLookup`
+ * (services/availability.ts, the app default) also answers 'possible' from name hints.
  */
 export interface LibraryLookup {
   lookup: (ids: CatalogIds) => LibraryStatuses;
@@ -111,6 +127,7 @@ export class BadgeService {
       artists: ids.artists ?? [],
       albums: ids.albums ?? [],
       tracks: ids.tracks ?? [],
+      hints: ids.hints,
     };
     const library = this.#library.lookup(full);
     const reqs = lookupRequests(this.#db, full);

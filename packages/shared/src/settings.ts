@@ -80,6 +80,13 @@ const mediaServer = z.object({
   serverId: z.string().default(''),
   /** Restrict indexing to these server library ids; omitted means all music libraries. */
   libraryIds: z.array(z.string()).optional(),
+  /**
+   * Translate paths between the media server's view and Hearer's (e.g. Jellyfin mounts the
+   * music at `/data/music`, Hearer at `/music`). Longest matching `serverPath` prefix wins.
+   */
+  pathMappings: z
+    .array(z.object({ serverPath: z.string().trim().min(1), localPath: z.string().trim().min(1) }))
+    .default([]),
 });
 
 const library = z.object({
