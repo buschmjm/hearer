@@ -1,0 +1,25 @@
+{
+  "name": "@hearer/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared schemas, enums and constants for Hearer.",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

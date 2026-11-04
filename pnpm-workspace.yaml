@@ -1,0 +1,15 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Single source of truth for pinned versions. Packages reference these with
+# "catalog:" so every workspace member uses the exact same version.
+catalog:
+  '@eslint/js': 10.0.1
+  '@types/node': 24.19.2
+  eslint: 10.14.0
+  globals: 17.14.0
+  prettier: 3.9.10
+  typescript: 6.0.3
+  typescript-eslint: 8.72.1
+  vitest: 5.1.0
