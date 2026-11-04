@@ -118,7 +118,8 @@ jobs:
             dump_logs
             exit 1
           fi
-          proc="$(docker exec "$cid" ps -o user,args | grep '[d]ist/index.js' || true)"
+          # Match the node process itself, not tini (which stays root as PID 1).
+          proc="$(docker exec "$cid" ps -o user,args | awk '$2 == "node" && /dist\/index\.js/' || true)"
           echo "process: $proc"
           case "$proc" in
             hearer*) ;;
