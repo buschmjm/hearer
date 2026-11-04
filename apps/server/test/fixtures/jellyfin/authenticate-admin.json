@@ -1,0 +1,11 @@
+{
+  "User": {
+    "Name": "jfadmin",
+    "ServerId": "8f1c5e0a7d2b4c6e9a3b1d4f5e6a7b8c",
+    "Id": "9d8c7b6a5f4e4d3c8b2a1f0e9d8c7b6a",
+    "HasPassword": true,
+    "Policy": { "IsAdministrator": true, "IsDisabled": false }
+  },
+  "AccessToken": "badc0ffee0ddf00d0123456789abcdef",
+  "ServerId": "8f1c5e0a7d2b4c6e9a3b1d4f5e6a7b8c"
+}

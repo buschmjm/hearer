@@ -27,6 +27,7 @@ const PUBLIC = new Set([
   'GET /api/v1/setup/status', // the wizard needs it before anyone can sign in
   'POST /api/v1/setup/admin', // first admin; 409s once any user exists
   'POST /api/v1/auth/login', // credentials in the body
+  'POST /api/v1/auth/jellyfin', // Jellyfin credentials in the body (rate limited)
   'POST /api/v1/auth/logout', // clears whatever cookie it was sent
 ]);
 

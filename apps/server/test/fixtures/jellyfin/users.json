@@ -1,0 +1,30 @@
+[
+  {
+    "Name": "alice",
+    "ServerId": "8f1c5e0a7d2b4c6e9a3b1d4f5e6a7b8c",
+    "Id": "2b1ccd0f9d7a4a5a8f0f3c1d9e8b7a60",
+    "HasPassword": true,
+    "Policy": { "IsAdministrator": false, "IsDisabled": false }
+  },
+  {
+    "Name": "bob",
+    "ServerId": "8f1c5e0a7d2b4c6e9a3b1d4f5e6a7b8c",
+    "Id": "3c2dde1fae8b5b6b9a1a4d2eaf9c8b71",
+    "HasPassword": true,
+    "Policy": { "IsAdministrator": false, "IsDisabled": false }
+  },
+  {
+    "Name": "jfadmin",
+    "ServerId": "8f1c5e0a7d2b4c6e9a3b1d4f5e6a7b8c",
+    "Id": "9d8c7b6a5f4e4d3c8b2a1f0e9d8c7b6a",
+    "HasPassword": true,
+    "Policy": { "IsAdministrator": true, "IsDisabled": false }
+  },
+  {
+    "Name": "mallory",
+    "ServerId": "8f1c5e0a7d2b4c6e9a3b1d4f5e6a7b8c",
+    "Id": "4d3eef20bf9c6c7caba2b5e3b0ad9c82",
+    "HasPassword": true,
+    "Policy": { "IsAdministrator": false, "IsDisabled": true }
+  }
+]

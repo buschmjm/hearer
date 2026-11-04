@@ -93,6 +93,15 @@ export class UsersService {
     return this.#db.select().from(users).where(eq(users.id, id)).get();
   }
 
+  /** The account linked to an identity-provider user, if any. */
+  getByExternal(authType: Exclude<AuthType, 'local'>, externalId: string): UserRow | undefined {
+    return this.#db
+      .select()
+      .from(users)
+      .where(and(eq(users.authType, authType), eq(users.externalId, externalId)))
+      .get();
+  }
+
   /** Case-insensitive username lookup. */
   getByUsername(username: string): UserRow | undefined {
     return this.#db.select().from(users).where(byLowerUsername(username)).get();
@@ -249,11 +258,13 @@ export class UsersService {
    * Find the account for an identity provider user, or create it with the default permissions.
    * Profile fields are refreshed on every login. A taken username gets a numeric suffix.
    * Whether auto-creation is allowed is the caller's decision (check before calling).
+   * `options.permissions` overrides `general.defaultPermissions` for a newly created account.
    */
   findOrCreateExternalUser(
     authType: Exclude<AuthType, 'local'>,
     externalId: string,
     profile: ExternalProfile,
+    options: { permissions?: number | undefined } = {},
   ): { user: UserRow; created: boolean } {
     return this.#db.transaction(
       (tx) => {
@@ -293,7 +304,7 @@ export class UsersService {
             email: profile.email ?? null,
             displayName: profile.displayName ?? null,
             avatar: profile.avatar ?? null,
-            permissions: this.#settings.get('general').defaultPermissions,
+            permissions: options.permissions ?? this.#settings.get('general').defaultPermissions,
           })
           .returning()
           .get();

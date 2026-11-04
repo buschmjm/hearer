@@ -18,10 +18,15 @@ import type { Config } from '../config.ts';
 import { API_PREFIX } from '../lib/constants.ts';
 import { HttpError, conflict } from '../lib/http-error.ts';
 import { toUserDto } from '../services/users.ts';
-import { parseSettingsKey, saveSettingsSection } from './settings.ts';
+import { MediaServerError } from '../adapters/mediaserver/types.ts';
+import { mediaServerHttpError } from '../auth/jellyfin.ts';
+import { parseSettingsKey, saveSettingsSection, testMediaServer } from './settings.ts';
 
-/** Sections the wizard may save. Media server, OIDC and notifications get their own routes. */
-export const SETUP_SECTIONS = ['general', 'library', 'uploads'] as const;
+/**
+ * Sections the wizard may save. `mediaServer` is verified with a live connection test before it
+ * is stored. OIDC and notifications get their own routes.
+ */
+export const SETUP_SECTIONS = ['general', 'library', 'uploads', 'mediaServer'] as const;
 
 /** Routes that stay reachable before setup is complete. */
 const OPEN_BEFORE_SETUP = ['health', 'auth', 'setup', 'openapi.json'].map(
@@ -179,13 +184,25 @@ export function setupRoutes(
           response: { 200: z.record(z.string(), z.unknown()) },
         },
       },
-      (request) => {
+      async (request) => {
         assertSetupOpen();
-        return saveSettingsSection(
-          settings,
-          parseSettingsKey(request.params.section),
-          request.body,
-        );
+        const key = parseSettingsKey(request.params.section);
+        if (key !== 'mediaServer') return saveSettingsSection(settings, key, request.body);
+        // Verify before saving, and remember the server's own id from the answer.
+        let info;
+        try {
+          info = await testMediaServer(app.hearer.mediaServer, request.body);
+        } catch (err) {
+          if (!(err instanceof MediaServerError)) throw err;
+          const http = mediaServerHttpError(err);
+          throw new HttpError(
+            400,
+            'media_server_test_failed',
+            `Could not connect to the media server: ${http.message}`,
+            { code: http.code },
+          );
+        }
+        return saveSettingsSection(settings, key, { ...request.body, serverId: info.id });
       },
     );
 

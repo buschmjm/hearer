@@ -12,6 +12,14 @@ import {
 describe('SecretBox', () => {
   const box = new SecretBox('a-long-enough-test-secret');
 
+  it('derives stable, label-specific ids that do not expose the key', () => {
+    const other = new SecretBox('another-test-secret-value');
+    expect(box.deriveId('x')).toBe(box.deriveId('x'));
+    expect(box.deriveId('x')).not.toBe(box.deriveId('y'));
+    expect(box.deriveId('x')).not.toBe(other.deriveId('x'));
+    expect(box.deriveId('x')).toMatch(/^[0-9a-f]{64}$/);
+  });
+
   it('round trips strings including empty and unicode', () => {
     for (const text of ['hunter2', '', 'päss wörd 🎵', 'x'.repeat(5000)]) {
       const enc = box.encrypt(text);

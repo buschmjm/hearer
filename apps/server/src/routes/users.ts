@@ -1,5 +1,8 @@
 import {
   Permission,
+  jellyfinImportCandidateSchema,
+  jellyfinImportRequestSchema,
+  jellyfinImportResultSchema,
   createUserRequestSchema,
   resetPasswordRequestSchema,
   updateUserRequestSchema,
@@ -11,6 +14,7 @@ import type { FastifyPluginCallbackZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { requirePermission } from '../auth/guard.ts';
 import { hashPassword } from '../auth/password.ts';
+import { jellyfinDefaultPermissions, mediaServerHttpError } from '../auth/jellyfin.ts';
 import { HttpError, forbidden, notFound, unauthorized } from '../lib/http-error.ts';
 import { toUserDto, type AuthUser, type UserRow } from '../services/users.ts';
 
@@ -50,7 +54,7 @@ function assertCanManage(actor: AuthUser, target: UserRow): void {
 
 /** Routes under /api/v1/users (MANAGE_USERS). */
 export const userRoutes: FastifyPluginCallbackZod = (app, _options, done) => {
-  const { users, sessions } = app.hearer;
+  const { users, sessions, settings, mediaServer } = app.hearer;
   const guard = [requirePermission(Permission.MANAGE_USERS)];
 
   const load = (id: string): UserRow => {
@@ -192,6 +196,89 @@ export const userRoutes: FastifyPluginCallbackZod = (app, _options, done) => {
       users.setPasswordHash(target.id, await hashPassword(request.body.newPassword));
       sessions.destroyAllForUser(target.id);
       return reply.code(204).send();
+    },
+  );
+
+  /** Users of the configured media server (Jellyfin). */
+  const jellyfinUsers = async () => {
+    const adapter = mediaServer.get();
+    if (!adapter.listUsers) {
+      throw new HttpError(400, 'import_not_supported', 'This media server cannot list users');
+    }
+    return adapter.listUsers();
+  };
+
+  app.get(
+    '/users/import/jellyfin',
+    {
+      onRequest: guard,
+      schema: {
+        tags: ['users'],
+        summary: 'Jellyfin users that can be imported (already imported ones are flagged)',
+        response: { 200: z.object({ items: z.array(jellyfinImportCandidateSchema) }) },
+      },
+    },
+    async () => {
+      let external;
+      try {
+        external = await jellyfinUsers();
+      } catch (err) {
+        throw mediaServerHttpError(err);
+      }
+      return {
+        items: external.map((u) => ({
+          id: u.id,
+          name: u.name,
+          isAdmin: u.isAdmin,
+          isDisabled: u.isDisabled === true,
+          importedUserId: users.getByExternal('jellyfin', u.id)?.id ?? null,
+        })),
+      };
+    },
+  );
+
+  app.post(
+    '/users/import/jellyfin',
+    {
+      onRequest: guard,
+      schema: {
+        tags: ['users'],
+        summary: 'Import Jellyfin users as Hearer accounts',
+        description:
+          'New accounts get the default permissions without UPLOAD; Jellyfin administrators do not become Hearer administrators.',
+        body: jellyfinImportRequestSchema,
+        response: { 200: jellyfinImportResultSchema },
+      },
+    },
+    async (request) => {
+      let external;
+      try {
+        external = await jellyfinUsers();
+      } catch (err) {
+        throw mediaServerHttpError(err);
+      }
+      const byId = new Map(external.map((u) => [u.id, u]));
+      const permissions = jellyfinDefaultPermissions(settings);
+      const imported: ReturnType<typeof toUserDto>[] = [];
+      const skipped: { id: string; reason: 'already_imported' | 'not_found' | 'disabled' }[] = [];
+      for (const id of new Set(request.body.ids)) {
+        const user = byId.get(id);
+        if (!user) {
+          skipped.push({ id, reason: 'not_found' });
+        } else if (user.isDisabled) {
+          skipped.push({ id, reason: 'disabled' });
+        } else {
+          const { user: row, created } = users.findOrCreateExternalUser(
+            'jellyfin',
+            user.id,
+            { username: user.name, displayName: user.name },
+            { permissions },
+          );
+          if (created) imported.push(toUserDto(row));
+          else skipped.push({ id, reason: 'already_imported' });
+        }
+      }
+      return { imported, skipped };
     },
   );
   done();

@@ -1,0 +1,30 @@
+{
+  "User": {
+    "Name": "alice",
+    "ServerId": "8f1c5e0a7d2b4c6e9a3b1d4f5e6a7b8c",
+    "Id": "2b1ccd0f9d7a4a5a8f0f3c1d9e8b7a60",
+    "HasPassword": true,
+    "HasConfiguredPassword": true,
+    "HasConfiguredEasyPassword": false,
+    "EnableAutoLogin": false,
+    "LastLoginDate": "2026-10-01T10:00:00.0000000Z",
+    "LastActivityDate": "2026-10-01T10:00:00.0000000Z",
+    "Configuration": { "PlayDefaultAudioTrack": true, "SubtitleMode": "Default" },
+    "Policy": {
+      "IsAdministrator": false,
+      "IsHidden": true,
+      "IsDisabled": false,
+      "EnableAllFolders": true,
+      "AuthenticationProviderId": "Jellyfin.Server.Implementations.Users.DefaultAuthenticationProvider"
+    }
+  },
+  "SessionInfo": {
+    "Id": "0a1b2c3d4e5f60718293a4b5c6d7e8f9",
+    "UserId": "2b1ccd0f9d7a4a5a8f0f3c1d9e8b7a60",
+    "UserName": "alice",
+    "Client": "Hearer",
+    "DeviceName": "Hearer Server"
+  },
+  "AccessToken": "f00dfacecafebeef0123456789abcdef",
+  "ServerId": "8f1c5e0a7d2b4c6e9a3b1d4f5e6a7b8c"
+}
