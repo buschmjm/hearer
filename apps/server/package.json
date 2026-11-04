@@ -31,6 +31,7 @@
     "jose": "catalog:",
     "music-metadata": "catalog:",
     "nodemailer": "catalog:",
+    "node-taglib-sharp": "catalog:",
     "fastify-type-provider-zod": "catalog:",
     "openid-client": "catalog:",
     "pino": "catalog:",
