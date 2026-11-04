@@ -1,0 +1,39 @@
+name: Adapter request
+description: Request support for another media server, fulfillment provider, metadata source or notification agent
+labels: [adapter]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Adapter type
+      options:
+        - Media server
+        - Fulfillment provider
+        - Metadata provider
+        - Notification agent
+    validations:
+      required: true
+  - type: input
+    id: target
+    attributes:
+      label: Service name and version
+      placeholder: Navidrome 0.5x
+    validations:
+      required: true
+  - type: input
+    id: docs
+    attributes:
+      label: API documentation link
+  - type: textarea
+    id: usecase
+    attributes:
+      label: Use case
+      description: How would you use it, and which capabilities (auth, library listing, rescan, and so on) do you need?
+    validations:
+      required: true
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to help implement or test this adapter

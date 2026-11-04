@@ -1,0 +1,25 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":pinAllExceptPeerDependencies"],
+  "schedule": ["before 6am on monday"],
+  "timezone": "Etc/UTC",
+  "semanticCommits": "enabled",
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"]
+  },
+  "packageRules": [
+    {
+      "description": "Group minor and patch dev dependency updates",
+      "matchDepTypes": ["devDependencies", "pnpm.catalog.default"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "dev dependencies (minor and patch)"
+    },
+    {
+      "description": "Keep Node major pinned to the supported LTS line",
+      "matchDepNames": ["node", "@types/node"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    }
+  ]
+}
