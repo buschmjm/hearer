@@ -3,8 +3,11 @@ export const APP_NAME = 'Hearer';
 /** Public repository URL, used in the MusicBrainz User-Agent and in docs. */
 export const REPO_URL = 'https://github.com/buschmjm/hearer';
 
-/** Current application version. Kept in sync with the root release tag. */
-export const APP_VERSION = '0.0.0';
+/**
+ * Current application version. release-please rewrites it (the marker comment on its line
+ * is how it finds it) together with every package.json version in the release pull request.
+ */
+export const APP_VERSION = '0.0.0'; // x-release-please-version
 
 /** Build the descriptive User-Agent string required by MusicBrainz. */
 export function userAgent(version: string = APP_VERSION): string {

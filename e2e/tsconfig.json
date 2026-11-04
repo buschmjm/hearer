@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "erasableSyntaxOnly": true,
+    "rewriteRelativeImportExtensions": false
+  },
+  "include": ["."],
+  "exclude": ["node_modules", "playwright-report", "test-results", ".run"]
+}

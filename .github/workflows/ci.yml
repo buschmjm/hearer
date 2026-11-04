@@ -38,6 +38,37 @@ jobs:
       - run: pnpm -r test
       - run: pnpm --filter server db:check
 
+  e2e:
+    name: End-to-end (Playwright)
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # The harness generates test audio with ffmpeg; uploads are fingerprinted with fpcalc.
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg libchromaprint-tools
+      - run: pnpm install --frozen-lockfile
+      # Only here: locally the browser comes from PLAYWRIGHT_CHROMIUM_PATH or /opt/pw-browsers.
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: e2e
+      - run: pnpm e2e
+
+      - name: Upload the Playwright report
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          retention-days: 14
+
   docker:
     name: Docker image
     needs: check

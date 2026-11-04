@@ -11,6 +11,8 @@ export default tseslint.config(
       '**/dist/**',
       '**/build/**',
       '**/coverage/**',
+      '**/playwright-report/**',
+      '**/test-results/**',
       '**/drizzle/**',
       '**/public/**',
       '**/*.d.ts',

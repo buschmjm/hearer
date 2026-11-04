@@ -1,6 +1,7 @@
 packages:
   - apps/*
   - packages/*
+  - e2e
 
 # Single source of truth for pinned versions. Packages reference these with
 # "catalog:" so every workspace member uses the exact same version.
@@ -11,6 +12,7 @@ catalog:
   tus-js-client: 4.3.1
   '@fastify/cookie': 11.1.5
   '@fastify/rate-limit': 11.2.2
+  '@playwright/test': 1.63.0
   '@types/better-sqlite3': 9.6.0
   argon2: 0.45.2
   better-sqlite3: 13.0.3
