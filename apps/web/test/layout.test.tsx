@@ -18,19 +18,27 @@ describe('permission-filtered navigation', () => {
 
   it('adds Requests and Upload from their permission bits', () => {
     expect(labels(Permission.REQUEST)).toEqual(['Home', 'Search', 'Requests']);
-    expect(labels(Permission.UPLOAD)).toEqual(['Home', 'Search', 'Upload']);
+    expect(labels(Permission.UPLOAD)).toEqual(['Home', 'Search', 'Upload', 'Uploads']);
     expect(labels(Permission.REQUEST | Permission.UPLOAD)).toEqual([
       'Home',
       'Search',
       'Requests',
       'Upload',
+      'Uploads',
     ]);
   });
 
   it('shows Admin to managers and to everyone with ADMIN', () => {
     expect(labels(Permission.MANAGE_USERS)).toContain('Admin');
     expect(labels(Permission.MANAGE_SETTINGS)).toContain('Admin');
-    expect(labels(Permission.ADMIN)).toEqual(['Home', 'Search', 'Requests', 'Upload', 'Admin']);
+    expect(labels(Permission.ADMIN)).toEqual([
+      'Home',
+      'Search',
+      'Requests',
+      'Upload',
+      'Uploads',
+      'Admin',
+    ]);
   });
 });
 
@@ -52,10 +60,10 @@ describe('layout', () => {
       within(nav)
         .getAllByRole('link')
         .map((a) => a.textContent),
-    ).toEqual(['Home', 'Search', 'Requests', 'Upload']);
+    ).toEqual(['Home', 'Search', 'Requests', 'Upload', 'Uploads']);
     expect(
       within(screen.getByRole('navigation', { name: 'Mobile navigation' })).getAllByRole('link'),
-    ).toHaveLength(4);
+    ).toHaveLength(5);
     expect(await screen.findAllByText('Tunes')).not.toHaveLength(0);
   });
 
@@ -76,7 +84,7 @@ describe('layout', () => {
     signedIn(Permission.ADMIN);
     renderApp('/');
     const nav = await screen.findByRole('navigation', { name: 'Main navigation' });
-    for (const name of ['Search', 'Requests', 'Upload', 'Admin']) {
+    for (const name of ['Search', 'Requests', 'Upload', 'Uploads', 'Admin']) {
       await user.click(within(nav).getByRole('link', { name }));
       expect(await screen.findByRole('heading', { name })).toBeInTheDocument();
       expect(screen.queryByText('Page not found')).not.toBeInTheDocument();
