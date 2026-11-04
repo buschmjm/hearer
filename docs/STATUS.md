@@ -710,3 +710,39 @@ All matched files use Prettier code style!
 **Next:** H-19 (upload UI).
 
 **Open questions:** none.
+
+## H-22a — Release pipeline, docs and the E2E harness
+
+**Status:** done (H-22b, the full-flow E2E specs, follows once H-19 and H-20 are merged)
+
+**Shipped:**
+
+- **E2E harness** (`e2e/`, workspace package `e2e`, `@playwright/test` 1.63.0 pinned in the catalog to match the preinstalled Playwright):
+  - `mocks/`: `jellyfin.ts` (modern `MediaBrowser` header only, `X-Emby-*` and `api_key=` answered 400; System/Info, Users, AuthenticateByName for `e2e-jellyfin`, paged Items built by ffprobe-scanning the live `MUSIC_DIR` so an import shows up after a sync, records `/Library/Media/Updated` and `/Library/Refresh` at `GET /__mock/rescans`), `musicbrainz.ts` (the server tests' MusicBrainz fixtures under `/ws/2` plus a generated JPEG for every cover under `/caa`), `acoustid.ts` (any fingerprint resolves to a configurable recording, default "Paranoid Android"; `POST /__mock/config` to change it, `GET /__mock/lookups`), `webhook.ts` (`POST /hook`, `GET|DELETE /received`, `?status=500` on the hook URL to fail on purpose).
+  - `global-setup.ts`: temp DATA/MUSIC/STAGING/scratch dirs, mocks on free ports (in the global-setup process), `node apps/server/dist/index.js` with `STATIC_DIR=apps/web/dist`, waits for `/api/v1/health`, writes `e2e/.run/runtime.json`, returns a teardown (SIGTERM then SIGKILL by PID, stops mocks, removes the temp dirs unless `E2E_KEEP=1`). Server log is `<tmp>/server.log` (path in the runtime file).
+  - `fixtures.ts`: `test` (adds `runtime`, `api`, `scratch`, and a `baseURL` fixture because the port is only known after setup), `HearerApi` (cookie + CSRF aware: `createAdmin`, `login`, `ensureSetUp`, `pointMetadataAtMocks`, `pointMediaServerAtMock`, `addWebhookTarget`, `syncLibrary`, `get/post/put`), `generateAudio` (ffmpeg sine tones with tags), `mocks.*` helpers, `eventually`, `signInViaUi`, `signOutViaUi`.
+  - `playwright.config.ts`: Chromium only, 1 worker, trace on first retry, screenshot on failure, `launchOptions.executablePath` from `PLAYWRIGHT_CHROMIUM_PATH`, else `/opt/pw-browsers/chromium` when present (not in CI).
+  - `smoke.spec.ts`: wizard through the UI (admin, general, media server with Test connection against the mock, library, review, finish), sign out, sign in again as the local admin, search "OK Computer" from the fixture server.
+  - Root `pnpm e2e` (build server + web, then `pnpm --filter e2e e2e`; the script is not called `test` so `pnpm -r test` stays fast and browser-free). Covered by `pnpm -r lint` and `pnpm -r typecheck`. CI: new `e2e` job (needs `check`, installs ffmpeg + chromaprint, `playwright install --with-deps chromium`, uploads `playwright-report` on failure).
+- **Bug found and fixed by the smoke spec:** the wizard's "Test connection" (`POST /settings/mediaServer/test`) answered 503 `setup_required` before setup was complete, so it never worked in a real browser (the web unit tests mock it). The setup gate now lets exactly that route through; it still needs `MANAGE_SETTINGS`. New test in `auth.setup.test.ts`; the route matrix knows the exception.
+- **Release pipeline:** `.github/workflows/release.yml` (release-please v4 on pushes to main; on `release_created` a separate `image` job builds amd64 + arm64 and pushes `ghcr.io/<lowercased owner>/hearer` as `X.Y.Z`, `X.Y`, `X` (not for 0.x) and `latest` (not for pre-releases), OCI labels, `sbom: true`, `provenance: mode=max`, plus a GitHub build-provenance attestation; per-job minimal permissions, workflow default is none). `release-please-config.json` + `.release-please-manifest.json` (`0.0.0`, node type, `bump-minor-pre-major`, so the first release is `0.1.0`), extra files: `apps/server`, `apps/web`, `packages/shared` package.json (`$.version`) and `packages/shared/src/index.ts` (`// x-release-please-version` marker on `APP_VERSION`). `APP_VERSION` is compiled into the server bundle, so it reaches the image from the tagged checkout; the image job refuses to publish if it disagrees with the release version, and a shared test keeps all four package.json versions equal to `APP_VERSION` and the marker present.
+- **Docs:** `docs/CONFIGURATION.md` (every env var, every settings section and key, notification agents and events, permission bit table, quotas, auto-approve, naming template variables, path mappings, security notes, tus chunking and the Cloudflare limit), `docs/DEPLOY.md` (docker run, compose, PUID/PGID/UMASK, Caddy/Traefik/nginx, Cloudflare Tunnel, Jellyfin, Keycloak/OIDC, Lidarr, upgrades and backups, troubleshooting, a clearly labeled homelab example), README rewritten (real quick start, features, status beta, screenshots, doc links), `docker-compose.example.yml` now points at `ghcr.io/buschmjm/hearer:latest`, CONTRIBUTING gained "End-to-end tests" and "Releases" (how to cut 1.0.0 with `release-as`). Screenshots in `docs/images/*.webp` (login, setup-media, search, album, requests; 148 KB total). `docs/ADAPTERS.md` unchanged (nothing missing).
+
+**Verify:** `pnpm e2e`, actionlint on both workflows, then `pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm --filter server db:check && pnpm format:check`
+
+```text
+packages/shared test:       Tests  17 passed (17)
+apps/web test:       Tests  124 passed (124)
+apps/server test:  Test Files  47 passed | 1 skipped (48)
+apps/server test:       Tests  1237 passed | 4 skipped (1241)
+db:check ok: schema matches 2 committed migration(s)
+All matched files use Prettier code style!
+pnpm e2e:  1 passed (5.1s)   [smoke.spec.ts]
+actionlint ci.yml release.yml: no findings
+```
+
+**Deviations:** DECISIONS.md not amended. The mocks run inside the Playwright global-setup process (not separate processes) so teardown is trivial; the server is the only child process. Action major versions (`release-please-action@v4`, `attest-build-provenance@v3`, `upload-artifact@v4`) could not be checked against GitHub from this container; bump them if newer majors exist.
+
+**Next:** H-22b: E2E specs for the full flow (wizard, login, request album with Manual fulfillment, upload two tracks fulfilling it, availability, webhook), after H-19 and H-20 merge.
+
+**Open questions:** (1) Cover images from the mock Cover Art Archive are blocked in the browser by the CSP (`img-src` allows only coverartarchive.org and archive.org); the embed-into-file path (server side) works against the mock. H-22b should not assert visible covers. (2) The first release is `0.1.0` only if at least one `feat:` commit is on main since the manifest version; document if a fix-only history is ever released first. (3) `latest` does not exist until the first release is cut; until then the compose example needs `:edge`.
