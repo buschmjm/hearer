@@ -8,7 +8,7 @@ import {
   REQUEST_STATUSES,
   REQUEST_TYPES,
   UPLOAD_STATUSES,
-  type NotificationEvent,
+  type UserNotifyPrefs,
 } from '@hearer/shared';
 import { sql } from 'drizzle-orm';
 import {
@@ -35,10 +35,7 @@ const uuid = () =>
     .$defaultFn(() => randomUUID());
 
 /** Per-user opt-in to notifications (null column = use the app defaults). */
-export interface UserNotifyPrefs {
-  events: NotificationEvent[];
-  email?: string;
-}
+export type { UserNotifyPrefs };
 
 /** Validated media facts recorded by the `upload.probe` job. */
 export interface UploadProbe {

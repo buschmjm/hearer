@@ -30,6 +30,7 @@
     "fastify": "catalog:",
     "jose": "catalog:",
     "music-metadata": "catalog:",
+    "nodemailer": "catalog:",
     "fastify-type-provider-zod": "catalog:",
     "openid-client": "catalog:",
     "pino": "catalog:",
@@ -39,9 +40,11 @@
   "devDependencies": {
     "@types/better-sqlite3": "catalog:",
     "@types/node": "catalog:",
+    "@types/smtp-server": "catalog:",
     "drizzle-kit": "catalog:",
     "esbuild": "catalog:",
     "eslint": "catalog:",
+    "smtp-server": "catalog:",
     "tus-js-client": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

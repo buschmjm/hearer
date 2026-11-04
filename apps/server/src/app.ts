@@ -78,6 +78,11 @@ import { EventBus, type UploadEventName, type UploadEventPayload } from './lib/e
 import { requestRoutes } from './routes/requests.ts';
 import { RequestsService } from './services/requests.ts';
 
+// H-21 notifications
+import { notifySendJob } from './jobs/notifySend.ts';
+import { notificationRoutes } from './routes/notifications.ts';
+import { NotificationService } from './services/notifications.ts';
+
 export { API_PREFIX };
 const JOB_SHUTDOWN_GRACE_MS = 5_000;
 
@@ -113,6 +118,8 @@ declare module 'fastify' {
       requests: RequestsService;
       /** Fulfillment provider selection (Manual, Lidarr). */
       fulfillment: FulfillmentRegistry;
+      /** Notification targets, delivery and per-user preferences (H-21). */
+      notifications: NotificationService;
     };
   }
 }
@@ -163,6 +170,8 @@ export interface AppDeps {
   };
   /** Lidarr HTTP tuning (tests): fetch implementation and timeout. */
   lidarrOptions?: { fetch?: typeof fetch; timeoutMs?: number };
+  /** Notification delivery tuning (tests): fetch implementation and per-request timeout. */
+  notifyOptions?: { fetch?: typeof fetch; timeoutMs?: number };
   /** Catalog requests per user per minute (tests). */
   searchRateLimitMax?: number;
 }
@@ -304,6 +313,19 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
     events: () => uploadEventSink,
     log: app.log,
   });
+  // H-21: notifications subscribe to the bus and queue `notify.send` jobs.
+  const notifications = new NotificationService({
+    db: database.db,
+    secrets,
+    settings,
+    jobs,
+    events,
+    log: app.log,
+    version,
+    ...deps.notifyOptions,
+  });
+  jobs.define(notifySendJob(notifications));
+  notifications.start();
   app.decorate('hearer', {
     database,
     secrets,
@@ -324,6 +346,7 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
     events,
     requests,
     fulfillment,
+    notifications,
     uploads: uploadsService,
     uploadReview,
   });
@@ -497,6 +520,9 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
   await app.register(requestRoutes, { prefix: API_PREFIX });
   // H-12: fulfillment providers (list, Lidarr test and options).
   await app.register(fulfillmentRoutes, { prefix: API_PREFIX });
+
+  // H-21: notification targets and per-user preferences.
+  await app.register(notificationRoutes, { prefix: API_PREFIX });
 
   for (const plugin of deps.routes ?? []) {
     await app.register(plugin, { prefix: API_PREFIX });

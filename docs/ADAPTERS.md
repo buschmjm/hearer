@@ -179,6 +179,62 @@ request fails after the retries with a message saying so; a Lidarr search that f
 the request in PROCESSING (the poll note says "finished and nothing is downloading") until an admin
 cancels or retries it.
 
+## NotificationAgent
+
+Agents deliver one rendered message to one destination. Code: `apps/server/src/adapters/notify/`.
+
+```ts
+interface NotificationAgent<C> {
+  id: 'webhook' | 'discord' | 'slack' | 'ntfy' | 'smtp';
+  label: string;
+  configSchema: ZodType<C>; // validates; rendered to JSON Schema with `x-secret: true` on secrets
+  secrets: string[]; // encrypted at rest, masked in the API
+  send(message: NotificationMessage, config: C, ctx: AgentContext): Promise<void>;
+  test?(config: C, ctx: AgentContext): Promise<void>; // default: send the `test` message
+}
+```
+
+All HTTP goes through `fetch` with a timeout. 2xx is success; 429, 408, 5xx, timeouts and network
+errors throw a plain `Error` (the `notify.send` job retries with backoff, 5 attempts); any other
+status and invalid config throw `PermanentJobError` (the job goes dead at once). Error messages
+never contain the destination URL, because webhook URLs carry tokens.
+
+| Agent     | Config                                                                                                          | Wire format                                                                                                                                                                                          |
+| --------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `webhook` | `url`, `headers`, `authorization`\*, `secret`\*, `timeoutSeconds`                                               | `POST` JSON `{ event, message, data }` (`message` = rendered notification, `data` = raw ids/status). `X-Hearer-Event`; with a secret `X-Hearer-Signature: sha256=<hex HMAC-SHA256 of the raw body>`. |
+| `discord` | `webhookUrl`\*, `username`, `avatarUrl`                                                                         | One embed (title 256, description 4096, 25 fields of 256/1024, 6000 total; longer text is cut with an ellipsis), per-event colour, thumbnail = cover, `allowed_mentions: none`.                      |
+| `slack`   | `webhookUrl`\*                                                                                                  | Block Kit: header, section (cover as image accessory), fields section, context, "Open in Hearer" button; `text` fallback.                                                                            |
+| `ntfy`    | `serverUrl` (default `https://ntfy.sh`), `topic`, `token`\*, `username`, `password`\*, `priority`, `userTopics` | `POST <server>/<topic>` with `Title` (RFC 2047 when not ASCII), `Priority`, `Tags`, `Click`, `Attach`, Bearer or Basic auth.                                                                         |
+| `smtp`    | `host`, `port`, `secure`, `requireTLS`, `user`, `pass`\*, `from`, `to`, `userEmail`                             | nodemailer; multipart text + inline-styled HTML. 5xx replies and auth failures are permanent, 4xx and connection errors retry.                                                                       |
+
+\* secret.
+
+**Events** (`NOTIFICATION_EVENTS`, the bit position is the stored bitmask, so events are only
+appended): `request.created` (a new request awaiting approval; not sent for auto-approved ones,
+their `request.approved` follows), `request.approved`, `request.declined`, `request.available`,
+`request.partially_available`, `request.failed`, `upload.needs_review`, `upload.duplicate`,
+`upload.imported`, `upload.failed`, plus `test` (never subscribable). Cancelled requests are not
+notified. English strings live in the `EN` catalog in `services/notifications.ts`.
+
+**Delivery.** `NotificationService` listens on the event bus. For each event it renders the
+message once (deep links use `general.applicationUrl`; no link when it is empty) and queues one
+`notify.send {targetId, event, message}` job per enabled target subscribed to it. The message is
+snapshotted in the job payload, so retries send identical bytes. Queueing errors are logged and
+never reach the code that emitted the event. The last error of a failed delivery is the job's
+`last_error` (admin jobs view).
+
+**Per-user opt-in.** `users.notify_prefs` is
+`{ email?: { enabled, events[] }, ntfy?: { topic, events[] } }` (edited at
+`GET/PUT /api/v1/auth/me/notifications`). A user is only ever notified about their own requests
+(`requested_by`) and uploads (`uploader_id`).
+
+- Email needs an SMTP target with `userEmail: true` (enabled) and an address on the user's
+  account. The message goes to the user's address instead of the target's `to`. SMTP targets
+  without the flag are never used for users.
+- A personal ntfy topic is published to the enabled ntfy target flagged `userTopics: true`
+  (its server and credentials, the user's topic), else to `https://ntfy.sh`.
+- Admin-level targets are independent: they see every event they subscribed to.
+
 ## Jellyfin
 
 `apps/server/src/adapters/mediaserver/jellyfin.ts`. Targets Jellyfin 10.10 and newer (tested
