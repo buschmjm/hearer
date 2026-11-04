@@ -1,0 +1,321 @@
+{
+  "created": "2026-11-04T01:03:01.504Z",
+  "count": 3895,
+  "offset": 0,
+  "release-groups": [
+    {
+      "id": "b1392450-e666-3926-a536-22c65f834433",
+      "score": 100,
+      "count": 39,
+      "title": "OK Computer",
+      "first-release-date": "1997-05-21",
+      "primary-type": "Album",
+      "artist-credit": [
+        {
+          "name": "Radiohead",
+          "artist": {
+            "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+            "name": "Radiohead"
+          }
+        }
+      ],
+      "releases": [
+        {
+          "id": "d339ba4d-0e44-4d2d-bc7a-b8078c072da9",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "8e2b5322-f9a6-4ab7-b3f4-f65e7ddbc9e4",
+          "title": "OK Computer: OKNOTOK 1997 2017",
+          "status": "Official"
+        },
+        {
+          "id": "30702389-5c67-4438-9ea0-2351c8de0f1d",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "83becfd2-0a58-4d5b-9214-55ecc17c928d",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "6a09041b-0f79-3278-88d9-0552dd28d37f",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "ab2c2726-a2c4-4f4d-a207-c1985c3f9a1b",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "2629071c-1d8f-43f1-be99-712d931e3bf1",
+          "title": "OK Computer: OKNOTOK 1997 2017",
+          "status": "Official"
+        },
+        {
+          "id": "d7881c68-914a-4da3-8a7d-be89f0201307",
+          "title": "OK Computer OKNOTOK 1997 2017",
+          "status": "Official"
+        },
+        {
+          "id": "52709206-8816-3c12-9ff6-f957f2f1eecf",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "839966ab-7612-447c-b805-2a36b3e18aa5",
+          "title": "OK Computer: OKNOTOK 1997 2017",
+          "status": "Official"
+        },
+        {
+          "id": "d6dc018d-5caa-4e6f-8e9d-d889fcd585f4",
+          "title": "OK Computer: OKNOTOK 1997 2017",
+          "status": "Official"
+        },
+        {
+          "id": "ad0e6676-3e55-4bd6-a9ed-7f6424fd46f6",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "1c16cd42-472f-47cc-9848-d081d0737a7c",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "425d8db9-88a3-31e2-bd23-b1a967626dd5",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "c7569949-0f67-4682-a0d8-75c4290c52dc",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "943aa9da-7dc7-4a4a-a95e-2ffa707b6858",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "0c324f3a-dcbb-4f09-b33a-c03c676b4044",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "e16cda60-6e6d-4a32-8d7c-e12d9aeb72de",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "a64e09a7-2f26-4d7a-8505-f2561ad3299b",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "5048852c-1b89-4acf-989e-2df6598c4e1e",
+          "title": "OK Computer: OKNOTOK 1997 2017",
+          "status": "Official"
+        },
+        {
+          "id": "a95ea77a-e7b1-4116-b647-8210f472b3e8",
+          "title": "OK Computer: OKNOTOK 1997 2017",
+          "status": "Official"
+        },
+        {
+          "id": "e8c3ff98-75f0-383f-a7d1-35db67661d89",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "16f227a1-fa4a-4d7e-bba2-6a8ca18c33a8",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "3c8cbdc8-555f-3987-8f03-6baf9488d1b0",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "9c1e5e9e-9f40-4cd8-94a4-785fa5d0b613",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "1834eae1-741b-3c03-9ca5-0df3decb43ea",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "4b3d18cc-8937-36f4-8de0-481088be58e6",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "a1ed87aa-2079-4e42-bbeb-6309b3b68674",
+          "title": "OK Computer: OKNOTOK 1997 2017",
+          "status": "Official"
+        },
+        {
+          "id": "fba5f8fe-c6c8-4511-8562-c9febf482674",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "541a0976-ca45-3c0f-89e5-26bc376f58d1",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "175d6ac9-7185-357c-af04-5887dc3ea788",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "bdf93ecb-85e8-3505-98f7-e2e8c5052723",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "51df2038-5682-303e-9d87-7aeb99660433",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "9eff0482-170f-3e93-8c65-73ce18e10ee7",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "0b6b4ba0-d36f-47bd-b4ea-6a5b91842d29",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "52e7fc61-fcf3-4b46-ac72-38e9644bf982",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "7169a92a-4dc1-42bb-9a21-c1c9223b68a8",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "a736eb98-ba6b-3e42-ad80-a65f648910a3",
+          "title": "OK Computer",
+          "status": "Official"
+        },
+        {
+          "id": "d4635a34-caf5-3b35-9a5b-d805f1126633",
+          "title": "OK Computer",
+          "status": "Official"
+        }
+      ]
+    },
+    {
+      "id": "59f25ce9-ae14-43c7-a09e-3a911060043a",
+      "score": 83,
+      "count": 1,
+      "title": "Radiohead",
+      "first-release-date": "1992",
+      "primary-type": "EP",
+      "artist-credit": [
+        {
+          "name": "Radiohead",
+          "artist": {
+            "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+            "name": "Radiohead"
+          }
+        }
+      ],
+      "releases": [
+        {
+          "id": "37539a5b-7788-4542-a29c-03eb64f63d93",
+          "title": "Radiohead",
+          "status": "Promotion"
+        }
+      ]
+    },
+    {
+      "id": "79659bfe-1392-4ad4-935f-60fa3cf602dd",
+      "score": 83,
+      "count": 1,
+      "title": "Radiohead",
+      "first-release-date": "1991",
+      "primary-type": "Other",
+      "secondary-types": ["Demo"],
+      "secondary-type-ids": ["81598169-0d6c-3bce-b4be-866fa658eda3"],
+      "artist-credit": [
+        {
+          "name": "Radiohead",
+          "artist": {
+            "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+            "name": "Radiohead"
+          }
+        }
+      ],
+      "releases": [
+        {
+          "id": "ca1306a2-1064-4998-a919-ee123fffd7e2",
+          "title": "Radiohead",
+          "status": "Promotion"
+        }
+      ]
+    },
+    {
+      "id": "40684055-b3dd-49d0-b376-bffc8458a2ba",
+      "score": 76,
+      "count": 1,
+      "title": "Computer",
+      "first-release-date": "2024-12-30",
+      "primary-type": "EP",
+      "artist-credit": [
+        {
+          "name": "Computer",
+          "artist": {
+            "id": "e222b0a7-83a4-4e56-a5e0-6c5b5569bd53",
+            "name": "Computer"
+          }
+        }
+      ],
+      "releases": [
+        {
+          "id": "f4edb02e-6e80-49f5-b46d-7026e92dab03",
+          "title": "Computer",
+          "status": "Official"
+        }
+      ]
+    },
+    {
+      "id": "d8dd81ab-d840-4663-8da3-d8c27c2eaf91",
+      "score": 76,
+      "count": 1,
+      "title": "Radiohead Box",
+      "first-release-date": "2008-01-01",
+      "primary-type": "Album",
+      "secondary-types": ["Compilation"],
+      "secondary-type-ids": ["dd2a21e1-0c00-3729-a7a0-de60b84eb5d1"],
+      "artist-credit": [
+        {
+          "name": "Radiohead",
+          "artist": {
+            "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+            "name": "Radiohead"
+          }
+        }
+      ],
+      "releases": [
+        {
+          "id": "84b9d51c-c6de-3529-8be0-b28ebe2ed157",
+          "title": "Radiohead Box",
+          "status": "Official"
+        }
+      ]
+    }
+  ]
+}

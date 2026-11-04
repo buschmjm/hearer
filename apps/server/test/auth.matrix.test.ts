@@ -38,6 +38,12 @@ const AUTHENTICATED_ONLY = new Set([
   'GET /api/v1/auth/api-keys',
   'POST /api/v1/auth/api-keys',
   'DELETE /api/v1/auth/api-keys/:id',
+  // Catalog search and browse (H-09): any signed-in user.
+  'GET /api/v1/search',
+  'GET /api/v1/artists/:mbid',
+  'GET /api/v1/artists/:mbid/albums',
+  'GET /api/v1/albums/:mbid',
+  'GET /api/v1/tracks/:mbid',
 ]);
 
 /** Prefixes that stay reachable before setup completes. */
