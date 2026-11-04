@@ -38,6 +38,7 @@ const PUBLIC = new Set([
 /** Routes any signed-in user may call (no specific permission bit needed). */
 const AUTHENTICATED_ONLY = new Set([
   'GET /api/v1/auth/me',
+  'PATCH /api/v1/auth/me',
   'POST /api/v1/auth/logout-all',
   'POST /api/v1/auth/password',
   'GET /api/v1/auth/api-keys',
