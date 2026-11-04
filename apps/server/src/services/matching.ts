@@ -328,14 +328,23 @@ export function assembleCandidate(input: AssembleInput): MatchCandidate | null {
   };
 }
 
-/** Best first; ties go to fingerprint-backed candidates, then to the recording id. */
+/** Best first; ties go to fingerprint-backed candidates, then to the recording id. Deduplicated. */
 export function sortCandidates(candidates: MatchCandidate[]): MatchCandidate[] {
-  return [...candidates].sort(
+  const sorted = [...candidates].sort(
     (a, b) =>
       b.score - a.score ||
       Number(b.sources.includes('acoustid')) - Number(a.sources.includes('acoustid')) ||
       a.id.localeCompare(b.id),
   );
+  // The same recording on the same release can be reached from several leads (fingerprint,
+  // tags, search). Keep only the best-scoring one, which sorts first.
+  const seen = new Set<string>();
+  return sorted.filter((c) => {
+    const key = `${c.recordingMbid}@${c.releaseMbid}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export interface GroupMember {

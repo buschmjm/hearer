@@ -95,7 +95,17 @@ describe('requests', () => {
   });
 
   it('share one limiter between providers, so concurrent callers stay under the rate', async () => {
-    const limiter = new RateLimiter({ intervalMs: 120 });
+    // Count the turns taken from the one shared limiter. Spacing itself is covered
+    // deterministically (fake clock) in metadata.ratelimit.test.ts; asserting wall-clock gaps
+    // here was flaky under load.
+    let turns = 0;
+    class CountingLimiter extends RateLimiter {
+      override async acquire(signal?: AbortSignal): Promise<void> {
+        await super.acquire(signal);
+        turns++;
+      }
+    }
+    const limiter = new CountingLimiter({ intervalMs: 20 });
     const route = makeProvider({ limiter });
     const job = makeProvider({ limiter });
     await Promise.all([
@@ -105,12 +115,8 @@ describe('requests', () => {
       job.searchArtists('b', PAGE),
       route.getRelease(IDS.release),
     ]);
-    const times = server.requests.map((r) => r.at).sort((a, b) => a - b);
-    expect(times).toHaveLength(5);
-    for (let i = 1; i < times.length; i++) {
-      // Allow a few ms of timer slop; the point is "spaced", not "bunched".
-      expect(nth(times, i) - nth(times, i - 1)).toBeGreaterThanOrEqual(100);
-    }
+    expect(server.requests).toHaveLength(5);
+    expect(turns).toBe(5);
   });
 });
 

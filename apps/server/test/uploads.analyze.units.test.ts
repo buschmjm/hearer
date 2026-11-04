@@ -17,6 +17,7 @@ import {
   rankReleases,
   scoreCandidate,
   similarity,
+  sortCandidates,
   trackScore,
   UNFINGERPRINTED_FACTOR,
 } from '../src/services/matching.ts';
@@ -293,5 +294,31 @@ describe('release choice', () => {
     expect(byTitle.map((r) => r.mbid)).toEqual(['b', 'a', 'c']);
     const byCount = rankReleases(group, { releaseMbids: [], album: null, trackTotal: 23 });
     expect(byCount[0]?.mbid).toBe('c');
+  });
+});
+
+describe('candidate ordering', () => {
+  const stub = (recording: string, release: string, score: number, sources: string[] = []) =>
+    ({
+      id: `${recording}@${release}`,
+      recordingMbid: recording,
+      releaseMbid: release,
+      score,
+      sources,
+    }) as unknown as Parameters<typeof sortCandidates>[0][number];
+
+  it('keeps one candidate per recording and release, the best scoring one', () => {
+    const out = sortCandidates([
+      stub('r1', 'a', 0.6, ['tags']),
+      stub('r1', 'a', 0.9, ['acoustid']),
+      stub('r1', 'a', 0.9, ['acoustid']),
+      stub('r1', 'b', 0.7),
+      stub('r2', 'a', 0.95),
+    ]);
+    expect(out.map((c) => [c.id, c.score])).toEqual([
+      ['r2@a', 0.95],
+      ['r1@a', 0.9],
+      ['r1@b', 0.7],
+    ]);
   });
 });

@@ -73,6 +73,21 @@ describe('MatchPicker', () => {
     expect(onSelect).toHaveBeenCalledWith(CAND_B);
   });
 
+  it('highlights only one of several candidates that share an id', () => {
+    render(
+      <MatchPicker
+        candidates={[CAND_A, CAND_A, CAND_B]}
+        selectedId={CAND_A.id}
+        onSelect={vi.fn()}
+        fileDurationMs={386_000}
+      />,
+    );
+    const checked = screen
+      .getAllByRole('radio')
+      .filter((r) => r.getAttribute('aria-checked') === 'true');
+    expect(checked).toHaveLength(1);
+  });
+
   it('says so when there are no candidates and formats the length difference', () => {
     render(
       <MatchPicker candidates={[]} selectedId={null} onSelect={vi.fn()} fileDurationMs={null} />,

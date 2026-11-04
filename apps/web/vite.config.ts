@@ -11,7 +11,22 @@ export default defineConfig({
     port: 5173,
     proxy: { '/api': { target: API_TARGET, changeOrigin: false } },
   },
-  build: { outDir: 'dist', sourcemap: false },
+  build: {
+    outDir: 'dist',
+    sourcemap: false,
+    rolldownOptions: {
+      output: {
+        // Long-lived vendor chunks cache across releases and keep the app chunk small.
+        codeSplitting: {
+          groups: [
+            { name: 'react', test: /node_modules[\\/](?:react|react-dom|scheduler)[\\/]/ },
+            { name: 'tanstack', test: /node_modules[\\/]@tanstack[\\/]/ },
+            { name: 'zod', test: /node_modules[\\/]zod[\\/]/ },
+          ],
+        },
+      },
+    },
+  },
   test: {
     include: ['test/**/*.test.{ts,tsx}'],
     environment: 'jsdom',

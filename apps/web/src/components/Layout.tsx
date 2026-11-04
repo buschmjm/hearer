@@ -251,7 +251,7 @@ export function Layout() {
           </header>
           <main
             id="main"
-            className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 pb-28 lg:px-10 lg:py-10 lg:pb-10"
+            className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))] lg:px-10 lg:py-10 lg:pb-10"
           >
             <Outlet />
           </main>

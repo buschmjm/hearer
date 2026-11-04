@@ -120,6 +120,24 @@ describe('security headers', () => {
     }
   });
 
+  it('adds the configured cover art origin to img-src, and follows settings changes', async () => {
+    const app = await withWeb();
+    const imgSrc = async (): Promise<string> => {
+      const res = await app.inject({ url: '/api/v1/health' });
+      const csp = String(res.headers['content-security-policy']);
+      return csp.split(';').find((d) => d.startsWith('img-src')) ?? '';
+    };
+    // Default: the origin repeats the built-in coverartarchive.org entry.
+    expect(await imgSrc()).toContain('https://coverartarchive.org');
+    const metadata = app.hearer.settings.get('metadata');
+    app.hearer.settings.set('metadata', {
+      ...metadata,
+      coverArtBaseUrl: 'http://127.0.0.1:4567/caa',
+    });
+    expect(await imgSrc()).toContain('http://127.0.0.1:4567');
+    expect(await imgSrc()).not.toContain('/caa');
+  });
+
   it('is present in API-only mode too', async () => {
     h = await createHarness();
     const res = await h.app.inject({ url: '/api/v1/health' });

@@ -75,8 +75,24 @@ const wantsHtml = (request: FastifyRequest): boolean =>
 
 /** Security headers for every response (API included). */
 export async function registerSecurityHeaders(app: FastifyInstance): Promise<void> {
+  // The browser loads cover art straight from the configured Cover Art Archive (or a mirror), so
+  // its origin joins img-src. Read per response: a settings change applies without a restart.
+  const coverOrigin = (): string => {
+    try {
+      const origin = new URL(app.hearer.settings.get('metadata').coverArtBaseUrl).origin;
+      return origin === 'null' ? "'self'" : origin;
+    } catch {
+      return "'self'";
+    }
+  };
   await app.register(helmet, {
-    contentSecurityPolicy: CONTENT_SECURITY_POLICY,
+    contentSecurityPolicy: {
+      useDefaults: false,
+      directives: {
+        ...CONTENT_SECURITY_POLICY.directives,
+        imgSrc: [...CONTENT_SECURITY_POLICY.directives.imgSrc, coverOrigin],
+      },
+    },
     // Cover art and the OIDC round trip are cross-origin navigations/loads; keep helmet's other
     // defaults (nosniff, referrer policy, frame denial, same-origin resource policy).
     crossOriginEmbedderPolicy: false,
