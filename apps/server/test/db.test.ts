@@ -109,7 +109,9 @@ describe('defaults and timestamps', () => {
   });
 
   it('round trips JSON columns', () => {
-    const user = mkUser('bob', { notifyPrefs: { events: ['request.available'] } });
+    const user = mkUser('bob', {
+      notifyPrefs: { email: { enabled: true, events: ['request.available'] } },
+    });
     const upload = database.db
       .insert(schema.uploads)
       .values({ uploaderId: user.id, originalName: 'a.flac', matchJson: [{ score: 0.9 }] })
@@ -117,7 +119,7 @@ describe('defaults and timestamps', () => {
       .get();
     expect(upload.matchJson).toEqual([{ score: 0.9 }]);
     expect(upload.status).toBe('RECEIVING');
-    expect(user.notifyPrefs).toEqual({ events: ['request.available'] });
+    expect(user.notifyPrefs).toEqual({ email: { enabled: true, events: ['request.available'] } });
   });
 });
 
