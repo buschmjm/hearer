@@ -5,6 +5,7 @@ import {
   Permission,
   TUS_PATH,
   uploadConfigSchema,
+  uploadDetailSchema,
   uploadDtoSchema,
   uploadIdParamsSchema,
   uploadListQuerySchema,
@@ -272,12 +273,12 @@ export const uploadRoutes: FastifyPluginCallbackZod = (app, _options, done) => {
       onRequest: [mayView],
       schema: {
         tags: ['uploads'],
-        summary: 'One upload',
+        summary: 'One upload, with its match candidates, proposed tags and album group',
         params: uploadIdParamsSchema,
-        response: { 200: uploadDtoSchema },
+        response: { 200: uploadDetailSchema },
       },
     },
-    (request) => visible(userOf(request), request.params.id),
+    (request) => app.hearer.uploadReview.detail(userOf(request), request.params.id),
   );
 
   app.delete(
