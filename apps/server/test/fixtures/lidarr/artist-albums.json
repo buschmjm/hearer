@@ -1,0 +1,14 @@
+[
+  {
+    "id": 41,
+    "title": "OK Computer",
+    "foreignAlbumId": "b1392450-e666-3926-a536-22c65f834433",
+    "monitored": false
+  },
+  {
+    "id": 42,
+    "title": "Kid A",
+    "foreignAlbumId": "c3b6a1d4-5c1f-4c34-9a0f-0d6a1b7e2f10",
+    "monitored": false
+  }
+]

@@ -1,0 +1,53 @@
+{
+  "name": "server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Hearer API server.",
+  "license": "MIT",
+  "scripts": {
+    "dev": "node --watch src/index.ts",
+    "build": "rm -rf dist && esbuild src/index.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist/index.js --sourcemap --external:better-sqlite3 --external:argon2 --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\" && cp -r drizzle dist/drizzle",
+    "start": "node dist/index.js",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node ../../scripts/vitest-run.mjs",
+    "db:generate": "drizzle-kit generate",
+    "db:check": "node scripts/db-check.ts"
+  },
+  "dependencies": {
+    "@fastify/cookie": "catalog:",
+    "@fastify/helmet": "13.2.0",
+    "@fastify/rate-limit": "catalog:",
+    "@fastify/static": "10.1.8",
+    "@fastify/swagger": "catalog:",
+    "@tus/file-store": "catalog:",
+    "@tus/server": "catalog:",
+    "@hearer/shared": "workspace:*",
+    "argon2": "catalog:",
+    "better-sqlite3": "catalog:",
+    "drizzle-orm": "catalog:",
+    "fastify": "catalog:",
+    "jose": "catalog:",
+    "music-metadata": "catalog:",
+    "nodemailer": "catalog:",
+    "node-taglib-sharp": "catalog:",
+    "fastify-type-provider-zod": "catalog:",
+    "openid-client": "catalog:",
+    "pino": "catalog:",
+    "pino-pretty": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "catalog:",
+    "@types/node": "catalog:",
+    "@types/smtp-server": "catalog:",
+    "drizzle-kit": "catalog:",
+    "esbuild": "catalog:",
+    "eslint": "catalog:",
+    "smtp-server": "catalog:",
+    "tus-js-client": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

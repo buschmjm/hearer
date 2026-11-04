@@ -1,0 +1,579 @@
+import { randomBytes, randomUUID } from 'node:crypto';
+import { APP_NAME, APP_VERSION } from '@hearer/shared';
+import swagger from '@fastify/swagger';
+import Fastify, {
+  type FastifyInstance,
+  type FastifyServerOptions,
+  type RouteOptions,
+} from 'fastify';
+import {
+  hasZodFastifySchemaValidationErrors,
+  isResponseSerializationError,
+  jsonSchemaTransform,
+  serializerCompiler,
+  validatorCompiler,
+  type FastifyPluginCallbackZod,
+  type ZodTypeProvider,
+} from 'fastify-type-provider-zod';
+import { pino, type Logger } from 'pino';
+import pretty from 'pino-pretty';
+import type { Config } from './config.ts';
+import { openDatabase, pingDatabase, MEMORY_DB, type Database_ } from './db/client.ts';
+import { runMigrations } from './db/migrate.ts';
+import { JobRunner, type JobRunnerOptions } from './jobs/runner.ts';
+import { MAINTENANCE_INTERVAL_MS, MAINTENANCE_JOB, maintenanceJob } from './jobs/maintenance.ts';
+import { API_PREFIX } from './lib/constants.ts';
+import { ApiKeyService } from './auth/apikeys.ts';
+import { createAuthHelpers, registerAuth, type AuthHelpers } from './auth/plugin.ts';
+import { SessionService, type SessionOptions } from './auth/sessions.ts';
+import { HttpError } from './lib/http-error.ts';
+import { SecretBox } from './lib/secrets.ts';
+import { SettingsService } from './services/settings.ts';
+import { UsersService } from './services/users.ts';
+import { authRoutes } from './routes/auth.ts';
+import { jellyfinAuthRoutes } from './auth/jellyfin.ts';
+import { MediaServerRegistry } from './adapters/mediaserver/registry.ts';
+import { oidcRoutes } from './routes/oidc.ts';
+// H-16: web app + security headers
+import { authMethodsRoutes } from './routes/methods.ts';
+import { registerSecurityHeaders, registerWebApp, resolveStaticDir } from './static.ts';
+import { healthRoutes, type HealthDeps } from './routes/health.ts';
+import { settingsRoutes } from './routes/settings.ts';
+import { registerSetupGate, setupRoutes } from './routes/setup.ts';
+import { userRoutes } from './routes/users.ts';
+// H-09 metadata
+import { MusicBrainzProvider, type MusicBrainzOptions } from './adapters/metadata/musicbrainz.ts';
+import type { MetadataProvider } from './adapters/metadata/types.ts';
+import { searchRoutes } from './routes/search.ts';
+import { BadgeService, type LibraryLookup } from './services/badges.ts';
+// H-10 library index + availability
+import { registerLibrarySync } from './jobs/librarySync.ts';
+import { libraryRoutes } from './routes/library.ts';
+import { AvailabilityMatcher, FuzzyLibraryLookup } from './services/availability.ts';
+import { LibraryService } from './services/library.ts';
+// H-13 uploads
+import { UploadsService } from './services/uploads.ts';
+import { uploadRoutes } from './routes/uploads.ts';
+import {
+  UPLOAD_EXPIRE_INTERVAL_MS,
+  UPLOAD_EXPIRE_JOB,
+  uploadExpireJob,
+  uploadProbeJob,
+} from './jobs/uploadProbe.ts';
+
+// H-14 analyze + review
+import { AcoustIdClient, type AcoustIdClientOptions } from './adapters/metadata/acoustid.ts';
+import { uploadAnalyzeJob } from './jobs/uploadAnalyze.ts';
+import { DuplicateChecker, MatchingService } from './services/matching.ts';
+import { UploadReviewService, type UploadEventSink } from './services/uploadReview.ts';
+import { uploadReviewRoutes } from './routes/uploads.review.ts';
+
+// H-15 import
+import { uploadImportJob } from './jobs/uploadImport.ts';
+import { ImportService } from './services/import.ts';
+
+// H-11 requests
+import { FulfillmentRegistry } from './adapters/fulfillment/registry.ts';
+import { requestAvailabilityJob } from './jobs/requestAvailability.ts';
+import { REQUEST_POLL_INTERVAL_MS, REQUEST_POLL_JOB, requestPollJob } from './jobs/requestPoll.ts';
+import { requestSubmitJob } from './jobs/requestSubmit.ts';
+import { fulfillmentRoutes } from './routes/fulfillment.ts';
+import { EventBus, type UploadEventName, type UploadEventPayload } from './lib/events.ts';
+import { requestRoutes } from './routes/requests.ts';
+import { RequestsService } from './services/requests.ts';
+
+// H-21 notifications
+import { notifySendJob } from './jobs/notifySend.ts';
+import { notificationRoutes } from './routes/notifications.ts';
+import { jobRoutes } from './routes/jobs.ts';
+import { NotificationService } from './services/notifications.ts';
+
+export { API_PREFIX };
+const JOB_SHUTDOWN_GRACE_MS = 5_000;
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    /** Shared services; route plugins use these instead of opening their own handles. */
+    hearer: {
+      database: Database_;
+      secrets: SecretBox;
+      settings: SettingsService;
+      jobs: JobRunner;
+      users: UsersService;
+      sessions: SessionService;
+      apiKeys: ApiKeyService;
+      auth: AuthHelpers;
+      /** Media server adapter built from the stored `mediaServer` settings. */
+      mediaServer: MediaServerRegistry;
+      /** Catalog metadata (MusicBrainz by default). */
+      metadata: MetadataProvider;
+      /** Library and request badges for catalog items. */
+      badges: BadgeService;
+      /** Library index sync and path mapping (H-10). */
+      library: LibraryService;
+      /** Request availability evaluation against the library index (H-10). */
+      availability: AvailabilityMatcher;
+      /** Upload receive: quotas, limits, staging paths (H-13). */
+      uploads: UploadsService;
+      /** Upload review actions and auto-approval (H-14). */
+      uploadReview: UploadReviewService;
+      /** In-process domain events (request.*, upload.*); notifications subscribe here. */
+      events: EventBus;
+      /** Requests: create, approve/decline/retry/cancel, timeline, quotas. */
+      requests: RequestsService;
+      /** Fulfillment provider selection (Manual, Lidarr). */
+      fulfillment: FulfillmentRegistry;
+      /** Notification targets, delivery and per-user preferences (H-21). */
+      notifications: NotificationService;
+      /** Tag, file and announce approved uploads (H-15). */
+      imports: ImportService;
+    };
+  }
+}
+
+export interface AppDeps {
+  version?: string;
+  /**
+   * An open, already-migrated database (index.ts passes the real one and closes it itself).
+   * When omitted, buildApp creates a migrated in-memory database and closes it with the app.
+   */
+  db?: Database_;
+  /** Encryption for secret settings. Defaults to HEARER_SECRET, else an ephemeral key. */
+  secrets?: SecretBox;
+  healthChecks?: HealthDeps['checks'];
+  /** Extra route plugins registered under /api/v1 (feature batches, tests). */
+  routes?: FastifyPluginCallbackZod[];
+  /**
+   * Start the job runner when the server is ready and stop it on close. Defaults to false so
+   * tests build an idle app; index.ts passes true.
+   */
+  startJobs?: boolean;
+  /** Job runner overrides (tests). */
+  jobs?: Partial<
+    Pick<JobRunnerOptions, 'workerId' | 'pollIntervalMs' | 'maxConcurrency' | 'staleLockMs'>
+  >;
+  /** Per-request timeout for media server calls in ms (tests shorten it). */
+  mediaServerTimeoutMs?: number;
+  /** Override the logger (tests). Defaults to one built from config. */
+  logger?: Logger;
+  /** Auth tuning (tests): session lifetime/clock and the login rate limit. */
+  auth?: SessionOptions & { rateLimitMax?: number };
+  /**
+   * Called for every route as it is registered (including the built-in ones). Lets tests
+   * enumerate the API surface, e.g. for the route-level permission matrix.
+   */
+  onRoute?: (route: RouteOptions) => void;
+  /** Catalog metadata source. Defaults to MusicBrainz via the global rate limiter and mb_cache. */
+  metadata?: MetadataProvider;
+  /** MusicBrainz client tuning (tests): limiter, fetch, clock, retry backoff. */
+  metadataOptions?: Partial<Omit<MusicBrainzOptions, 'db' | 'settings' | 'logger'>>;
+  /** Library matching for badges. Defaults to the fuzzy index lookup (exact MBID, then name matches as 'possible'). */
+  libraryLookup?: LibraryLookup;
+  /** Upload analysis tuning (tests): binary and time limit for fpcalc, AcoustID limiter. */
+  uploadAnalyze?: {
+    fpcalcBinary?: string;
+    fpcalcTimeoutMs?: number;
+    acoustIdLimiter?: AcoustIdClientOptions['limiter'];
+  };
+  /** Lidarr HTTP tuning (tests): fetch implementation and timeout. */
+  lidarrOptions?: { fetch?: typeof fetch; timeoutMs?: number };
+  /** Notification delivery tuning (tests): fetch implementation and per-request timeout. */
+  notifyOptions?: { fetch?: typeof fetch; timeoutMs?: number };
+  /** Upload import tuning (tests): crash hooks, cover source, rename, umask, ffmpeg. */
+  uploadImport?: Partial<
+    Pick<
+      ConstructorParameters<typeof ImportService>[0],
+      'hook' | 'fetchCover' | 'rename' | 'umask' | 'ffmpegBinary' | 'now'
+    >
+  >;
+  /** Catalog requests per user per minute (tests). */
+  searchRateLimitMax?: number;
+}
+
+export interface ApiErrorBody {
+  error: { code: string; message: string; details?: unknown };
+}
+
+export function createLogger(config: Pick<Config, 'logLevel' | 'logFormat'>): Logger {
+  const options = {
+    level: config.logLevel,
+    redact: {
+      paths: ['req.headers.authorization', 'req.headers.cookie', 'res.headers["set-cookie"]'],
+      censor: '[redacted]',
+    },
+  };
+  return config.logFormat === 'pretty'
+    ? pino(options, pretty({ colorize: true, sync: true }))
+    : pino(options);
+}
+
+/** Fastify's types omit the numeric hop-count form, so express it as a function. */
+function toTrustProxy(
+  value: Config['trustProxy'],
+): boolean | ((address: string, hop: number) => boolean) {
+  return typeof value === 'number' ? (_address, hop) => hop < value : value;
+}
+
+function describeClientError(error: unknown): {
+  status: number;
+  code: string;
+  message: string;
+  details?: unknown;
+} {
+  if (!(error instanceof Error)) return { status: 500, code: 'internal_error', message: '' };
+  if (error instanceof HttpError) {
+    return {
+      status: error.statusCode,
+      code: error.code,
+      message: error.message,
+      ...(error.details === undefined ? {} : { details: error.details }),
+    };
+  }
+  const { statusCode, code } = error as Error & { statusCode?: unknown; code?: unknown };
+  return {
+    status: typeof statusCode === 'number' ? statusCode : 500,
+    code: typeof code === 'string' ? code.toLowerCase() : 'bad_request',
+    message: error.message,
+  };
+}
+
+export async function buildApp(config: Config, deps: AppDeps = {}): Promise<FastifyInstance> {
+  const version = deps.version ?? APP_VERSION;
+  const serverOptions: FastifyServerOptions = {
+    loggerInstance: deps.logger ?? createLogger(config),
+    trustProxy: toTrustProxy(config.trustProxy),
+    requestIdHeader: 'x-request-id',
+    genReqId: () => randomUUID(),
+  };
+  const app = Fastify(serverOptions).withTypeProvider<ZodTypeProvider>();
+  const { onRoute } = deps;
+  if (onRoute) app.addHook('onRoute', onRoute);
+
+  let database = deps.db;
+  if (!database) {
+    const owned = openDatabase(MEMORY_DB);
+    runMigrations(owned.db);
+    app.addHook('onClose', () => {
+      owned.close();
+    });
+    database = owned;
+  }
+  const secrets = deps.secrets ?? new SecretBox(config.secret ?? randomBytes(32));
+  const jobs = new JobRunner({ database, logger: app.log, ...deps.jobs });
+  jobs.define(maintenanceJob({ database, stagingDir: config.stagingDir }));
+  jobs.schedule({ type: MAINTENANCE_JOB, every: MAINTENANCE_INTERVAL_MS });
+  const settings = new SettingsService(database.db, secrets, app.log);
+  const sessions = new SessionService(database.db, deps.auth);
+  const apiKeys = new ApiKeyService(database.db, deps.auth?.now);
+  const mediaServer = new MediaServerRegistry(
+    settings,
+    secrets,
+    version,
+    deps.mediaServerTimeoutMs,
+  );
+  const metadata =
+    deps.metadata ??
+    new MusicBrainzProvider({
+      db: database.db,
+      settings,
+      logger: app.log,
+      version,
+      ...deps.metadataOptions,
+    });
+  const library = new LibraryService({ db: database.db, settings, mediaServer });
+  // H-10: library.sync job + schedules.
+  registerLibrarySync(jobs, library);
+  // H-11: events, requests service and its jobs (`requests.availability` is enqueued by the sync).
+  const availability = new AvailabilityMatcher(database.db, metadata);
+  const events = new EventBus(app.log);
+  const fulfillment = new FulfillmentRegistry({
+    settings,
+    metadata,
+    version,
+    lidarr: deps.lidarrOptions,
+  });
+  const requests = new RequestsService({
+    db: database.db,
+    settings,
+    metadata,
+    availability,
+    events,
+    jobs,
+    fulfillment,
+    logger: app.log,
+  });
+  jobs.define(requestSubmitJob(requests));
+  jobs.define(requestAvailabilityJob({ requests, availability }));
+  // H-12: status polling for submitted requests (timeline visibility only).
+  jobs.define(requestPollJob(requests));
+  jobs.schedule({ type: REQUEST_POLL_JOB, every: REQUEST_POLL_INTERVAL_MS });
+  // Adapts the typed bus to the review service's loose emitter (upload.* events only).
+  const uploadEventSink: UploadEventSink = {
+    emit: (event, payload) => {
+      events.emit(event as UploadEventName, payload as UploadEventPayload);
+    },
+  };
+  const uploadsService = new UploadsService({
+    db: database.db,
+    settings,
+    stagingDir: config.stagingDir,
+  });
+  // H-14: review actions and auto-approval.
+  const uploadReview = new UploadReviewService({
+    db: database.db,
+    uploads: uploadsService,
+    settings,
+    jobs,
+    events: () => uploadEventSink,
+    log: app.log,
+  });
+  // H-21: notifications subscribe to the bus and queue `notify.send` jobs.
+  const notifications = new NotificationService({
+    db: database.db,
+    secrets,
+    settings,
+    jobs,
+    events,
+    log: app.log,
+    version,
+    ...deps.notifyOptions,
+  });
+  jobs.define(notifySendJob(notifications));
+  notifications.start();
+  // H-15: tag write, cover embed, templated atomic move, rescan, request link.
+  const imports = new ImportService({
+    db: database.db,
+    settings,
+    musicDir: config.musicDir,
+    stagingDir: config.stagingDir,
+    library,
+    mediaServer,
+    metadata,
+    requests,
+    availability,
+    events,
+    jobs,
+    log: app.log,
+    version,
+    // E2E crash test only (NODE_ENV=test): pause at one import step so the process can be killed.
+    ...(config.testImportPause
+      ? {
+          hook: async (point: string) => {
+            const pause = config.testImportPause;
+            if (pause?.point === point) {
+              await new Promise((resolve) => setTimeout(resolve, pause.ms));
+            }
+          },
+        }
+      : {}),
+    ...deps.uploadImport,
+  });
+  app.decorate('hearer', {
+    database,
+    secrets,
+    settings,
+    jobs,
+    users: new UsersService(database.db, settings),
+    sessions,
+    apiKeys,
+    auth: createAuthHelpers({ config, settings, sessions, rateLimitMax: deps.auth?.rateLimitMax }),
+    mediaServer,
+    metadata,
+    badges: new BadgeService(
+      database.db,
+      deps.libraryLookup ?? new FuzzyLibraryLookup(database.db),
+    ),
+    library,
+    availability,
+    events,
+    requests,
+    fulfillment,
+    notifications,
+    uploads: uploadsService,
+    uploadReview,
+    imports,
+  });
+  // H-13: validate received uploads, and expire abandoned ones.
+  jobs.define(
+    uploadProbeJob({
+      uploads: app.hearer.uploads,
+      db: database.db,
+      hasJob: (type) => jobs.registry.has(type),
+    }),
+  );
+  jobs.define(uploadExpireJob({ uploads: app.hearer.uploads, db: database.db, log: app.log }));
+  jobs.schedule({ type: UPLOAD_EXPIRE_JOB, every: UPLOAD_EXPIRE_INTERVAL_MS });
+  // H-14: fingerprint, AcoustID, candidate scoring, dedupe.
+  jobs.define(
+    uploadAnalyzeJob({
+      db: database.db,
+      uploads: app.hearer.uploads,
+      review: uploadReview,
+      matching: new MatchingService({
+        metadata,
+        coverBaseUrl: () => settings.get('metadata').coverArtBaseUrl,
+      }),
+      duplicates: new DuplicateChecker(database.db, deps.libraryLookup),
+      acoustId: new AcoustIdClient({
+        settings,
+        logger: app.log,
+        version,
+        ...(deps.uploadAnalyze?.acoustIdLimiter
+          ? { limiter: deps.uploadAnalyze.acoustIdLimiter }
+          : {}),
+      }),
+      ...(deps.uploadAnalyze?.fpcalcBinary
+        ? { fpcalcBinary: deps.uploadAnalyze.fpcalcBinary }
+        : {}),
+      ...(deps.uploadAnalyze?.fpcalcTimeoutMs
+        ? { fpcalcTimeoutMs: deps.uploadAnalyze.fpcalcTimeoutMs }
+        : {}),
+    }),
+  );
+  jobs.define(uploadImportJob({ imports }));
+  if (deps.startJobs) {
+    app.addHook('onReady', () => {
+      jobs.start();
+    });
+  }
+  // Registered after the owned-database hook; onClose hooks run last-registered first, so the
+  // runner is stopped before the database closes.
+  app.addHook('onClose', async () => {
+    await jobs.stop({ graceMs: JOB_SHUTDOWN_GRACE_MS });
+  });
+  const dbHandle = database;
+
+  app.setValidatorCompiler(validatorCompiler);
+  app.setSerializerCompiler(serializerCompiler);
+
+  app.addHook('onSend', async (request, reply) => {
+    void reply.header('x-request-id', request.id);
+  });
+
+  const sendError = (
+    reply: { status: (code: number) => { send: (body: ApiErrorBody) => unknown } },
+    status: number,
+    code: string,
+    message: string,
+    details?: unknown,
+  ) =>
+    reply
+      .status(status)
+      .send({ error: { code, message, ...(details === undefined ? {} : { details }) } });
+
+  // H-16: set when the built web app is served; renders index.html for unknown browser paths.
+  let spaFallback: Awaited<ReturnType<typeof registerWebApp>> | undefined;
+
+  app.setNotFoundHandler((request, reply) => {
+    const page = spaFallback?.(request, reply);
+    if (page) return page;
+    if (request.url.startsWith(API_PREFIX) || request.url === '/api') {
+      return sendError(reply, 404, 'not_found', `Route ${request.method} ${request.url} not found`);
+    }
+    return sendError(reply, 404, 'not_found', 'Not found');
+  });
+
+  app.setErrorHandler((error, request, reply) => {
+    if (hasZodFastifySchemaValidationErrors(error)) {
+      return sendError(
+        reply,
+        400,
+        'validation_error',
+        'Request validation failed',
+        error.validation,
+      );
+    }
+    if (isResponseSerializationError(error)) {
+      request.log.error({ err: error }, 'response serialization failed');
+      return sendError(reply, 500, 'internal_error', 'Internal server error');
+    }
+    const { status, code, message, details } = describeClientError(error);
+    if (status >= 500 && !(error instanceof HttpError)) {
+      request.log.error({ err: error }, 'unhandled error');
+      return sendError(reply, 500, 'internal_error', 'Internal server error');
+    }
+    return sendError(reply, status, code, message, details);
+  });
+
+  // H-16: security headers on every response, then the web app when a build is available.
+  await registerSecurityHeaders(app);
+  const staticDir = resolveStaticDir(config);
+  if (staticDir) spaFallback = await registerWebApp(app, staticDir);
+
+  await registerAuth(app, {
+    config,
+    settings,
+    sessions,
+    apiKeys,
+    helpers: app.hearer.auth,
+  });
+  registerSetupGate(app);
+
+  await app.register(swagger, {
+    openapi: {
+      openapi: '3.0.3',
+      info: { title: `${APP_NAME} API`, version },
+      servers: config.baseUrl ? [{ url: config.baseUrl }] : [],
+    },
+    transform: jsonSchemaTransform,
+  });
+
+  app.get(`${API_PREFIX}/openapi.json`, { schema: { hide: true } }, () => app.swagger());
+
+  await app.register(
+    healthRoutes({
+      version,
+      checks: {
+        db: () => {
+          pingDatabase(dbHandle);
+          return { status: 'ok' as const };
+        },
+        ...deps.healthChecks,
+      },
+    }),
+    { prefix: API_PREFIX },
+  );
+
+  await app.register(authRoutes, { prefix: API_PREFIX });
+  // H-16: public sign-in options for the login page
+  await app.register(authMethodsRoutes, { prefix: API_PREFIX });
+  // H-07: Jellyfin sign-in
+  await app.register(jellyfinAuthRoutes, { prefix: API_PREFIX });
+  await app.register(setupRoutes(config), { prefix: API_PREFIX });
+  await app.register(settingsRoutes, { prefix: API_PREFIX });
+  await app.register(userRoutes, { prefix: API_PREFIX });
+  // OIDC login (H-08)
+  await app.register(oidcRoutes(config, { now: deps.auth?.now }), { prefix: API_PREFIX });
+  // H-09: catalog search and browse.
+  await app.register(
+    searchRoutes(
+      deps.searchRateLimitMax === undefined ? {} : { rateLimitMax: deps.searchRateLimitMax },
+    ),
+    {
+      prefix: API_PREFIX,
+    },
+  );
+
+  // H-10: library status and manual sync.
+  await app.register(libraryRoutes, { prefix: API_PREFIX });
+  // H-13: tus receive and the upload JSON API.
+  await app.register(uploadRoutes, { prefix: API_PREFIX });
+  await app.register(uploadReviewRoutes, { prefix: API_PREFIX });
+
+  // H-11: requests API.
+  await app.register(requestRoutes, { prefix: API_PREFIX });
+  // H-12: fulfillment providers (list, Lidarr test and options).
+  await app.register(fulfillmentRoutes, { prefix: API_PREFIX });
+
+  // H-21: notification targets and per-user preferences.
+  await app.register(notificationRoutes, { prefix: API_PREFIX });
+
+  // H-20: jobs administration.
+  await app.register(jobRoutes, { prefix: API_PREFIX });
+
+  for (const plugin of deps.routes ?? []) {
+    await app.register(plugin, { prefix: API_PREFIX });
+  }
+
+  return app;
+}

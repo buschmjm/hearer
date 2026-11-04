@@ -14,7 +14,7 @@ pnpm test
 pnpm format:check   # or `pnpm format` to fix
 ```
 
-The repository is a pnpm workspace: `apps/server`, `apps/web` and `packages/shared`. Dependencies are pinned to exact versions; shared dev tooling versions live in the `catalog` section of `pnpm-workspace.yaml`.
+The repository is a pnpm workspace: `apps/server`, `apps/web`, `packages/shared` and `e2e`. Dependencies are pinned to exact versions; shared dev tooling versions live in the `catalog` section of `pnpm-workspace.yaml`.
 
 ## Ground rules
 
@@ -36,3 +36,17 @@ Work is planned as numbered batches (H-01, H-02, ...) in [docs/PLAN.md](docs/PLA
 ## Reporting security issues
 
 Do not open a public issue. See [SECURITY.md](SECURITY.md).
+
+## End-to-end tests
+
+`pnpm e2e` builds the server and web app, starts them on temp directories next to mock Jellyfin, MusicBrainz and Cover Art Archive, AcoustID and webhook services (`e2e/mocks/`), and drives a real Chromium with Playwright. It needs `ffmpeg` and, for uploads, `fpcalc` on the PATH. Install the browser once with `pnpm --filter e2e exec playwright install chromium`, or point `PLAYWRIGHT_CHROMIUM_PATH` at an existing Chromium. Write specs against `e2e/fixtures.ts` (the `api` client for set-up shortcuts, `generateAudio`, `mocks`); set `E2E_KEEP=1` to keep the temp directories and server log of a run.
+
+The browser and API helpers reach Hearer through a small reverse proxy (`e2e/mocks/proxy.ts`) that rejects request bodies over 100 MB and can drop one connection mid-body, so the specs also prove chunked, resumable uploads. Specs run in file order on one shared server (`00-smoke.spec.ts` runs the wizard first; the others call `api.ensureSetUp()`). `restart.spec.ts` kills the server mid-import using the test-only variables `HEARER_TEST_IMPORT_PAUSE_MS` and `HEARER_TEST_IMPORT_PAUSE_AT`, which the server honors only when `NODE_ENV=test`.
+
+## Releases
+
+Releases are automated with [release-please](https://github.com/googleapis/release-please). Use [conventional commits](https://www.conventionalcommits.org) (`feat:`, `fix:`, `feat!:` ...). release-please keeps a "chore: release X.Y.Z" pull request open on `main` that updates `CHANGELOG.md` and the version in the root, `apps/server`, `apps/web` and `packages/shared` `package.json` files and in `APP_VERSION` (`packages/shared/src/index.ts`, found by its `x-release-please-version` marker). Merging that pull request tags `vX.Y.Z`, creates the GitHub release and publishes the multi-arch image to `ghcr.io/<owner>/hearer` as `X.Y.Z`, `X.Y`, `X` (not for 0.x) and `latest`, with SBOM and provenance attestations.
+
+- While the version is below 1.0, breaking changes and features both bump the minor version. The manifest starts at `0.0.0`, so the first release is `0.1.0`.
+- To cut **1.0.0**: add `"release-as": "1.0.0"` to the `.` package in `release-please-config.json`, merge the resulting release PR, then remove the line again (and `bump-minor-pre-major` stops mattering).
+- The release pull request is opened with the default token, which does not start CI on it. To get CI on release PRs, add a personal access token or a GitHub App token as the repository secret `RELEASE_PLEASE_TOKEN`.

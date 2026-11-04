@@ -15,3 +15,10 @@ coverage/
 *.sqlite
 *.sqlite-*
 *.db
+.db-check-*/
+.dev/
+
+# e2e run artifacts
+/e2e/.run/
+/e2e/playwright-report/
+/e2e/test-results/

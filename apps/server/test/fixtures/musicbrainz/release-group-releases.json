@@ -1,0 +1,147 @@
+{
+  "releases": [
+    {
+      "status": "Official",
+      "id": "0b6b4ba0-d36f-47bd-b4ea-6a5b91842d29",
+      "media": [
+        {
+          "id": "f08fb5b1-a264-379d-b3b1-cbf569b389e9",
+          "position": 1,
+          "title": "",
+          "track-count": 12,
+          "format": "CD"
+        }
+      ],
+      "title": "OK Computer",
+      "date": "1997-07-01"
+    },
+    {
+      "media": [
+        {
+          "track-count": 12,
+          "format": "CD",
+          "title": "",
+          "position": 1,
+          "id": "060959f3-0d81-38b3-be26-c32f80ca68e9"
+        }
+      ],
+      "id": "1834eae1-741b-3c03-9ca5-0df3decb43ea",
+      "status": "Official",
+      "date": "1997-05-21",
+      "title": "OK Computer"
+    },
+    {
+      "date": "2017-07-07",
+      "title": "OK Computer: OKNOTOK 1997 2017",
+      "status": "Official",
+      "media": [
+        {
+          "position": 1,
+          "title": "OK",
+          "format": "CD",
+          "track-count": 12,
+          "id": "7f210dd4-0737-31ac-92e1-0f3fbbcd6936"
+        },
+        {
+          "title": "NOTOK",
+          "position": 2,
+          "track-count": 11,
+          "format": "CD",
+          "id": "0665e861-1c94-309b-b309-f5bacd6ee8a5"
+        }
+      ],
+      "id": "2629071c-1d8f-43f1-be99-712d931e3bf1"
+    },
+    {
+      "title": "OK Computer",
+      "date": "2016-04-01",
+      "status": "Official",
+      "media": [
+        {
+          "track-count": 12,
+          "format": "Digital Media",
+          "title": "",
+          "position": 1,
+          "id": "31b42a96-8ed1-3c60-97c0-4ce258ac6298"
+        }
+      ],
+      "id": "30702389-5c67-4438-9ea0-2351c8de0f1d"
+    },
+    {
+      "status": "Official",
+      "media": [
+        {
+          "position": 1,
+          "title": "",
+          "format": "CD",
+          "track-count": 12,
+          "id": "4a2a764a-fd63-3cdf-a2bb-f0e41c97a9e4"
+        }
+      ],
+      "id": "425d8db9-88a3-31e2-bd23-b1a967626dd5",
+      "title": "OK Computer",
+      "date": "1997-06-16"
+    },
+    {
+      "id": "5048852c-1b89-4acf-989e-2df6598c4e1e",
+      "media": [
+        {
+          "id": "0285e43f-6f7a-3da2-8307-10b688346bda",
+          "position": 1,
+          "title": "ip / skip",
+          "track-count": 6,
+          "format": "12\" Vinyl"
+        },
+        {
+          "format": "12\" Vinyl",
+          "track-count": 6,
+          "title": "sky / blue",
+          "position": 2,
+          "id": "034421ea-a2df-34bd-bb2e-25ced81e2491"
+        },
+        {
+          "format": "12\" Vinyl",
+          "track-count": 11,
+          "position": 3,
+          "title": "who's / it",
+          "id": "199f9049-c1e1-3eb0-b80e-8b31e20ae4b8"
+        }
+      ],
+      "status": "Official",
+      "title": "OK Computer: OKNOTOK 1997 2017",
+      "date": "2017-06-23"
+    },
+    {
+      "id": "8e2b5322-f9a6-4ab7-b3f4-f65e7ddbc9e4",
+      "media": [
+        {
+          "id": "6d41c594-6782-340d-a74d-d2939dd75943",
+          "position": 1,
+          "title": "",
+          "format": "Digital Media",
+          "track-count": 23
+        }
+      ],
+      "status": "Official",
+      "title": "OK Computer: OKNOTOK 1997 2017",
+      "date": "2017-06-22"
+    },
+    {
+      "title": "OK Computer",
+      "date": "1997",
+      "media": [
+        {
+          "id": "d6101d08-eb00-388e-a181-8b009b687b53",
+          "position": 1,
+          "title": "",
+          "format": "Cassette",
+          "track-count": 12
+        }
+      ],
+      "id": "9c1e5e9e-9f40-4cd8-94a4-785fa5d0b613",
+      "status": "Official"
+    }
+  ],
+  "release-offset": 0,
+  "release-count": 39
+}

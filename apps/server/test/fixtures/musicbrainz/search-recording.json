@@ -1,0 +1,175 @@
+{
+  "created": "2026-11-04T01:03:59.089Z",
+  "count": 362,
+  "offset": 0,
+  "recordings": [
+    {
+      "id": "f13f1bd6-882b-4107-973a-894621763314",
+      "score": 100,
+      "title": "Paranoid Android",
+      "length": 388000,
+      "artist-credit": [
+        {
+          "name": "Radiohead",
+          "artist": {
+            "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+            "name": "Radiohead"
+          }
+        }
+      ],
+      "first-release-date": "2008-07-08",
+      "releases": [
+        {
+          "id": "c83698dd-7911-4e10-a8bc-844a3bcdd49a",
+          "count": 1,
+          "title": "2008‐07‐08: Kindl‐Bühne Wuhlheide, Berlin, Germany",
+          "status": "Bootleg",
+          "artist-credit": [
+            {
+              "name": "Radiohead",
+              "artist": {
+                "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+                "name": "Radiohead"
+              }
+            }
+          ],
+          "release-group": {
+            "id": "8000fdf9-1238-33ef-926e-f924fa23e2b8",
+            "title": "2008‐07‐08: Kindl‐Bühne Wuhlheide, Berlin, Germany",
+            "primary-type": "Album",
+            "secondary-types": ["Live"],
+            "secondary-type-ids": ["6fd474e2-6b58-3102-9d17-d6f7eb7da0a0"]
+          },
+          "date": "2008-07-08",
+          "track-count": 25,
+          "media": [
+            {
+              "id": "2fcef3ff-8129-37a5-adc1-5f735e288b92",
+              "position": 1,
+              "format": "Digital Media",
+              "track": [
+                {
+                  "id": "855faaec-07c1-3fd9-aa65-4b40acbf793d",
+                  "number": "20",
+                  "title": "Paranoid Android",
+                  "length": 388000
+                }
+              ],
+              "track-count": 25,
+              "track-offset": 19
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "efeb9ff6-5293-45c7-8b5c-206a88e294ec",
+      "score": 100,
+      "title": "Paranoid Android",
+      "artist-credit": [
+        {
+          "name": "Radiohead",
+          "artist": {
+            "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+            "name": "Radiohead"
+          }
+        }
+      ],
+      "releases": [
+        {
+          "id": "d750d6c5-72ef-47c5-83aa-6676d8195555",
+          "count": 2,
+          "title": "2001-06-01: No More Jokes: Rock am Ring, Nürburgring, Germany",
+          "status": "Bootleg",
+          "artist-credit": [
+            {
+              "name": "Radiohead",
+              "artist": {
+                "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+                "name": "Radiohead"
+              }
+            }
+          ],
+          "release-group": {
+            "id": "ceffaef8-3b77-308c-9c26-c47c2052f83f",
+            "title": "2001-06-01: No More Jokes: Rock am Ring, Nürburgring, Germany",
+            "primary-type": "Album",
+            "secondary-types": ["Live"],
+            "secondary-type-ids": ["6fd474e2-6b58-3102-9d17-d6f7eb7da0a0"]
+          },
+          "track-count": 25,
+          "media": [
+            {
+              "id": "7ddde6b3-8400-3e13-8bdd-b8191de81d94",
+              "position": 2,
+              "track": [
+                {
+                  "id": "40521a22-c3bc-323f-bda0-46c8ed936b29",
+                  "number": "4",
+                  "title": "Paranoid Android"
+                }
+              ],
+              "track-count": 10,
+              "track-offset": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "69342a20-cc13-4343-8c84-00c6762ff231",
+      "score": 100,
+      "title": "Paranoid Android",
+      "artist-credit": [
+        {
+          "name": "Radiohead",
+          "artist": {
+            "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+            "name": "Radiohead"
+          }
+        }
+      ],
+      "releases": [
+        {
+          "id": "dda40f4b-2ea7-4308-9cc7-8b34a9faf2ad",
+          "count": 1,
+          "title": "2008-08-27: Cricket Wireless Amphitheater, Chula Vista, CA, USA",
+          "status": "Bootleg",
+          "artist-credit": [
+            {
+              "name": "Radiohead",
+              "artist": {
+                "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+                "name": "Radiohead"
+              }
+            }
+          ],
+          "release-group": {
+            "id": "00468d75-4011-49ab-beb4-4455078af079",
+            "title": "2008‐08‐27: Cricket Wireless Amphitheater, Chula Vista, CA, USA",
+            "primary-type": "Album",
+            "secondary-types": ["Live"],
+            "secondary-type-ids": ["6fd474e2-6b58-3102-9d17-d6f7eb7da0a0"]
+          },
+          "date": "",
+          "track-count": 27,
+          "media": [
+            {
+              "id": "bb88d0a0-3fd0-3a07-9586-4beb26c7e58c",
+              "position": 1,
+              "track": [
+                {
+                  "id": "83b18d1f-450f-3cf4-92a6-164624dfe033",
+                  "number": "22",
+                  "title": "Paranoid Android"
+                }
+              ],
+              "track-count": 27,
+              "track-offset": 21
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

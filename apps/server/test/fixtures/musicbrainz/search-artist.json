@@ -1,0 +1,24 @@
+{
+  "created": "2026-11-04T01:03:47.315Z",
+  "count": 29,
+  "offset": 0,
+  "artists": [
+    {
+      "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+      "type": "Group",
+      "score": 100,
+      "name": "Radiohead"
+    },
+    {
+      "id": "c74f4726-2671-4011-81b6-f70da905c05a",
+      "type": "Group",
+      "score": 65,
+      "name": "On a Friday"
+    },
+    {
+      "id": "3ecaa799-94ae-45cd-9ad1-bcabae4073e1",
+      "score": 63,
+      "name": "radiohead 3"
+    }
+  ]
+}
