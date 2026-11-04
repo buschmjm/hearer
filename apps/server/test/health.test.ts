@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.ts';
 import { loadConfig } from '../src/config.ts';
+import { openDatabase } from '../src/db/client.ts';
+import { runMigrations } from '../src/db/migrate.ts';
 
 const config = loadConfig({ NODE_ENV: 'test', LOG_LEVEL: 'silent' });
 
@@ -29,7 +31,7 @@ describe('GET /api/v1/health', () => {
     expect(body.status).toBe('ok');
     expect(body.version).toBe('1.2.3');
     expect(body.uptimeSeconds).toBeGreaterThanOrEqual(0);
-    expect(body.checks).toEqual({});
+    expect(body.checks).toEqual({ db: { status: 'ok' } });
   });
 
   it('generates a request id and honors an incoming one', async () => {
@@ -60,6 +62,41 @@ describe('health checks', () => {
       status: 'degraded',
       checks: { db: { status: 'ok' }, library: { status: 'error', message: 'not mounted' } },
     });
+  });
+});
+
+describe('db health check', () => {
+  it('is ok with a working database and exposes the shared services', async () => {
+    app = await buildApp(config);
+    expect(app.hearer.settings.get('general').appTitle).toBe('Hearer');
+    const res = await app.inject({ method: 'GET', url: '/api/v1/health' });
+    expect(res.json()).toMatchObject({ status: 'ok', checks: { db: { status: 'ok' } } });
+  });
+
+  it('reports degraded when the database is closed', async () => {
+    const database = openDatabase(':memory:');
+    runMigrations(database.db);
+    app = await buildApp(config, { db: database });
+    database.close();
+    const res = await app.inject({ method: 'GET', url: '/api/v1/health' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      status: string;
+      checks: { db: { status: string; message: string } };
+    }>();
+    expect(body.status).toBe('degraded');
+    expect(body.checks.db.status).toBe('error');
+    expect(body.checks.db.message).toMatch(/not open/i);
+  });
+
+  it('does not close a database it was given', async () => {
+    const database = openDatabase(':memory:');
+    runMigrations(database.db);
+    app = await buildApp(config, { db: database });
+    await app.close();
+    expect(database.sqlite.open).toBe(true);
+    database.close();
+    app = await buildApp(config);
   });
 });
 

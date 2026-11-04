@@ -1,11 +1,23 @@
 import { buildApp } from './app.ts';
 import { ConfigError, loadConfig } from './config.ts';
+import { openDatabase } from './db/client.ts';
+import { runMigrations } from './db/migrate.ts';
+import { createSecretBox } from './lib/secrets.ts';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const app = await buildApp(config);
+  const database = openDatabase(config.dataDir);
+  let app;
+  try {
+    runMigrations(database.db);
+    const secrets = createSecretBox({ secret: config.secret, dataDir: config.dataDir });
+    app = await buildApp(config, { db: database, secrets });
+  } catch (err) {
+    database.close();
+    throw err;
+  }
 
   let shuttingDown = false;
   const shutdown = (signal: string): void => {
@@ -20,10 +32,12 @@ async function main(): Promise<void> {
     // pino writes to stdout synchronously, so nothing is left buffered once close resolves.
     app.close().then(
       () => {
+        database.close();
         process.exit(0);
       },
       (err: unknown) => {
         app.log.error({ err }, 'error during shutdown');
+        database.close();
         process.exit(1);
       },
     );
