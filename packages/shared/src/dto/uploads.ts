@@ -45,6 +45,8 @@ export const uploadDtoSchema = z.object({
   sampleRate: z.number().int().nullable(),
   channels: z.number().int().nullable(),
   targetRequestId: z.string().nullable(),
+  /** Where the file landed in the library (set once imported). */
+  libraryPath: z.string().nullable(),
   /** Why an upload was rejected or failed (or `cancelled`). */
   error: z.string().nullable(),
   createdAt: z.string(),

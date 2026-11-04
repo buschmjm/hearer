@@ -1,7 +1,15 @@
 import { Permission, hasPermission } from '@hearer/shared';
-import { Home, Search, ListMusic, Upload, ShieldCheck, type LucideIcon } from 'lucide-react';
+import {
+  Home,
+  Search,
+  ListMusic,
+  Upload,
+  Library,
+  ShieldCheck,
+  type LucideIcon,
+} from 'lucide-react';
 
-export type NavPath = '/' | '/search' | '/requests' | '/upload' | '/admin';
+export type NavPath = '/' | '/search' | '/requests' | '/upload' | '/uploads' | '/admin';
 
 export interface NavItem {
   to: NavPath;
@@ -34,6 +42,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     to: '/upload',
     label: 'Upload',
     Icon: Upload,
+    anyOf: [Permission.UPLOAD, Permission.MANAGE_UPLOADS],
+  },
+  {
+    to: '/uploads',
+    label: 'Uploads',
+    Icon: Library,
     anyOf: [Permission.UPLOAD, Permission.MANAGE_UPLOADS],
   },
   {

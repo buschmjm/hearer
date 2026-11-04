@@ -382,6 +382,7 @@ export function toDto(row: UploadRow, uploaderName: string | null): UploadDto {
     sampleRate: row.sampleRate,
     channels: probe?.channels ?? null,
     targetRequestId: row.targetRequestId,
+    libraryPath: row.libraryPath,
     error: row.error,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),

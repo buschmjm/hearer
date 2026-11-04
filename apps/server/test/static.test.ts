@@ -112,7 +112,7 @@ describe('security headers', () => {
       expect(csp, url).not.toContain('unsafe-inline');
       expect(csp, url).toContain("connect-src 'self'");
       expect(csp, url).toContain(
-        "img-src 'self' data: https://coverartarchive.org https://*.archive.org",
+        "img-src 'self' data: https://coverartarchive.org https://archive.org https://*.archive.org",
       );
       expect(csp, url).toContain("frame-ancestors 'none'");
       expect(csp, url).not.toContain('upgrade-insecure-requests');
