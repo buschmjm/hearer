@@ -1,0 +1,30 @@
+# Example Compose file for Hearer. Copy to docker-compose.yml and adjust.
+services:
+  hearer:
+    image: ghcr.io/OWNER/hearer:edge # replace OWNER with the GitHub account that publishes the image
+    # To build from a checkout of this repo instead of pulling the image,
+    # comment out `image` above and uncomment:
+    # build:
+    #   context: .
+    #   dockerfile: docker/Dockerfile
+    container_name: hearer
+    restart: unless-stopped
+    ports:
+      - '5055:5055'
+    environment:
+      # Run the app as this uid/gid. Match the owner of your music library.
+      PUID: '1000'
+      PGID: '1000'
+      # Permissions for files the app creates (002 = group writable).
+      UMASK: '002'
+      TZ: 'Etc/UTC'
+      # Public URL users reach Hearer at (used for links and OIDC callbacks).
+      # BASE_URL: 'https://hearer.example.com'
+      # Optional: at least 16 characters. Encrypts stored credentials. If unset,
+      # a key is generated into /data/secret.key; back that file up with /data.
+      # HEARER_SECRET: ''
+    volumes:
+      - ./data:/data # database and generated secret key
+      - /path/to/music:/music # your music library (must be writable by PUID/PGID)
+      - ./staging:/staging # temporary upload area
+    # The image already defines a HEALTHCHECK against /api/v1/health.
