@@ -622,3 +622,34 @@ All matched files use Prettier code style!
 **Next:** H-18 (requests queue, my requests, timeline).
 
 **Open questions:** none.
+
+## H-18 — Web: requests queue, my requests, timeline
+
+**Status:** done
+
+**Shipped:**
+
+- `/requests` (`routes/requests.tsx`): "My requests" for everyone, an "All requests" tab for VIEW_ALL_REQUESTS / MANAGE_REQUESTS (`?tab=all` is ignored without the permission, so the API is never asked for everyone's). Status count chips from `GET /requests/counts` (zero counts hidden), type filter, sort (newest / oldest / recently updated), pagination (20 per page, "Showing x-y of n"), all in the URL (`lib/requestFilters.ts`), skeleton / empty / error states.
+- `RequestTable`: one DOM laid out by CSS, a table (ARIA table roles) from `md` up and cards on phones; cover, title (links to the detail page), artist, type, requester (All tab only), status badge, relative date (absolute time in the tooltip), actions.
+- `RequestActions` (table and detail page): Approve / Decline (MANAGE_REQUESTS, PENDING), Retry (MANAGE_REQUESTS, FAILED), Cancel (owner or manager, while the server allows it) with a confirm dialog; server refusals (e.g. `invalid_transition`) show as toasts and the lists refresh. `DeclineDialog`: reason required (trimmed), 500 character cap with live counter, server error inline. `Dialog` from H-17 gives role=dialog/aria-modal, focus into the reason field, Tab trap, Esc, focus restore.
+- `/requests/$id` (`routes/request-detail.tsx`): header with cover, type and status, actions, decline reason, `Timeline` (from to status badges, actor or System, note, relative time, oldest first), details card, links to the album / artist / track (and the parent album for tracks).
+- Nav: managers see a pending-count badge on Requests (desktop and bottom bar, refreshed every minute and after any request change), with a screen-reader "(n pending)".
+- Tests (`requests.test.tsx`, 28): table per-permission actions (manager, owner, view-all, final states), approve / retry / cancel (with confirm) / refusal, decline validation (blank, whitespace, cap, trimmed body, server error, Esc, Tab trap), timeline, page tabs / permission gate / filters / sort / pagination / empty / error, detail page, nav badge. Web total 124 tests.
+- Screenshots (1280 and 390 px, dark): `/tmp/claude-0/-home-user/d2e062ff-6bd1-5840-b011-41cd111dc499/scratchpad/h18-{requests-all,request-detail,request-declined,decline-dialog}-{1280,390}.png`.
+
+**Verify:** `pnpm --filter web build && pnpm --filter web test`, then `pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm format:check`
+
+```text
+apps/web test:  Test Files  10 passed (10)
+apps/web test:       Tests  124 passed (124)
+apps/server test:  Test Files  40 passed | 1 skipped (41)
+apps/server test:       Tests  1044 passed | 4 skipped (1048)
+Checking formatting...
+All matched files use Prettier code style!
+```
+
+**Deviations:** more than 8 files. In the desktop table Cancel is icon-only (accessible name and tooltip kept) to fit three actions. The queue filters one status at a time (the API accepts lists; chips are single-select). DECISIONS.md not amended.
+
+**Next:** H-19 (upload UI).
+
+**Open questions:** none.

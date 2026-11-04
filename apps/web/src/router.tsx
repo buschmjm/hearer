@@ -19,9 +19,12 @@ import { AlbumPage } from './routes/album.tsx';
 import { ArtistPage } from './routes/artist.tsx';
 import { HomePage } from './routes/home.tsx';
 import { LoginPage } from './routes/login.tsx';
+import { RequestDetailPage } from './routes/request-detail.tsx';
+import { RequestsPage } from './routes/requests.tsx';
+import { requestsSearchSchema } from './lib/requestFilters.ts';
 import { SearchPage } from './routes/search.tsx';
 import { SetupPage } from './routes/setup.tsx';
-import { AccountPage, AdminPage, ApiKeysPage, RequestsPage, UploadPage } from './routes/stubs.tsx';
+import { AccountPage, AdminPage, ApiKeysPage, UploadPage } from './routes/stubs.tsx';
 import { TrackPage } from './routes/track.tsx';
 
 /*
@@ -124,7 +127,17 @@ const trackRoute = createRoute({
 const requestsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/requests',
-  component: RequestsPage,
+  validateSearch: requestsSearchSchema,
+  component: function Requests() {
+    return <RequestsPage search={requestsRoute.useSearch()} />;
+  },
+});
+const requestDetailRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/requests/$id',
+  component: function RequestDetail() {
+    return <RequestDetailPage id={requestDetailRoute.useParams().id} />;
+  },
 });
 const uploadRoute = createRoute({
   getParentRoute: () => appRoute,
@@ -157,6 +170,7 @@ const routeTree = rootRoute.addChildren([
     albumRoute,
     trackRoute,
     requestsRoute,
+    requestDetailRoute,
     uploadRoute,
     adminRoute,
     accountRoute,

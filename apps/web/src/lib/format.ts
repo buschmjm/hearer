@@ -1,4 +1,10 @@
-import type { ArtistCredit, RequestQuota, RequestStatus, RequestType } from '@hearer/shared';
+import type {
+  ArtistCredit,
+  RequestQuota,
+  RequestStatus,
+  RequestType,
+  RequestUser,
+} from '@hearer/shared';
 
 /** 215000 -> "3:35"; 3_725_000 -> "1:02:05". Null/invalid -> an em dash. */
 export function formatDuration(ms: number | null | undefined): string {
@@ -116,3 +122,7 @@ export function quotaSummary(quota: RequestQuota | undefined): string | null {
   }
   return `${String(remaining)} of ${String(quota.limit)} requests left (per ${String(quota.days)} days)`;
 }
+
+/** Display name of the person behind a request or a decision. */
+export const requesterName = (user: RequestUser | null): string =>
+  user ? (user.displayName ?? user.username) : 'Unknown user';
