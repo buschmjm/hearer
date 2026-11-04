@@ -413,3 +413,32 @@ The mock IdP (`test/helpers/mock-idp.ts`) is a real node:http server on port 0 w
 **Next:** H-16b (setup wizard), then H-17.
 
 **Open questions:** none.
+
+## H-16b — Setup wizard
+
+**Status:** done
+
+**Shipped:**
+
+- `/setup` multi-step wizard (`routes/setup.tsx`, `components/wizard/*`), driven by `GET /setup/status`: 1 Admin (`POST /setup/admin`, confirm password, shared `setupAdminRequestSchema`), 2 General (title, application URL, default permission checkboxes; validated with the shared settings schema), 3 Media server (URL + API key, "Test connection" via `POST /settings/mediaServer/test`, `PUT /setup/mediaServer`, or "Skip for now"), 4 Library and uploads (MUSIC_DIR/STAGING_DIR writability from status with "Check again", naming and singles templates with a live preview and variable list, max upload size; Continue is blocked until both folders are writable), 5 Review (summary, `POST /setup/complete`, then home).
+- Each step validates before calling the API, shows server errors inline (field errors from `validation_error`, `media_server_test_failed`, `setup_admin_exists`, `directories_not_ready`) and can go back. Resume: no admin starts at step 1; an existing admin starts at step 2 (signed in) or shows a sign-in form (no session). The current step is kept in `sessionStorage`. Settings sections are saved by fetching the stored section and merging the edited fields, because `PUT` replaces the whole section.
+- `lib/template.ts`: preview renderer and validator for the naming template (`{var}`, `{track:02}`, `{disc:?}`).
+- Tests: `wizard.test.tsx` (14), `template.test.ts` (5). Web total 58 tests.
+- Screenshots (1280 and 390 px, dark; login also light and with errors): `/tmp/claude-0/-home-user/d2e062ff-6bd1-5840-b011-41cd111dc499/scratchpad/h16-*.png`.
+
+**Verify:** `pnpm --filter web build && pnpm --filter web test` and `pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm --filter server db:check && pnpm format:check`
+
+```text
+apps/server test:    Duration  40.15s
+db:check ok: schema matches 1 committed migration(s)
+Checking formatting...
+All matched files use Prettier code style!
+```
+
+Smoke: `STATIC_DIR=apps/web/dist node apps/server/dist/index.js` with a temp `DATA_DIR`: `/` and `/setup` returned HTML (CSP header present, `cache-control: no-cache` on the page), `/api/v1/health` returned JSON; the server was stopped by PID.
+
+**Deviations:** the `{disc:?}` preview rule (disc number plus a dash on multi-disc releases only) is an assumption; H-15's real renderer must match or the preview must follow it. The media server step is skippable (Hearer works with local accounts and manual fulfillment). DECISIONS.md not amended.
+
+**Next:** H-17 (search page replaces the `SearchPage` stub in `routes/stubs.tsx`).
+
+**Open questions:** none.
