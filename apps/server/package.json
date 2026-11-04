@@ -11,7 +11,7 @@
     "start": "node dist/index.js",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run",
+    "test": "node ../../scripts/vitest-run.mjs",
     "db:generate": "drizzle-kit generate",
     "db:check": "node scripts/db-check.ts"
   },
