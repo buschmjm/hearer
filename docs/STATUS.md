@@ -170,3 +170,33 @@ Smoke: `pnpm build`, then `DATA_DIR=<tmp>/data PORT=5198 node dist/index.js` ret
 **Next:** H-04 (job runner), H-06 (auth; use `hasPermission`/`Permission` and `app.hearer.settings`).
 
 **Open questions:** none. Note `buildApp` without `deps.db` uses an ephemeral secret when `HEARER_SECRET` is unset; production always goes through `index.ts`.
+
+## H-05 — CI + Dockerfile
+
+**Status:** done (image build and CI run are unverified until GitHub Actions runs)
+
+**Shipped:**
+
+- `docker/Dockerfile`: two stages on `node:24.22.2-alpine3.24` (ARG `NODE_IMAGE`). Build stage: python3/make/g++, corepack pnpm 10.34.9, `pnpm install --frozen-lockfile` with a BuildKit cache mount for the pnpm store, `pnpm --filter server build`, an `apps/web` build that is skipped while the directory does not exist (H-16 needs no Dockerfile change; its `dist` ends up in `/app/public`), then `pnpm --filter server deploy --prod --legacy /out`. A build-time check loads better-sqlite3 from `/out` (falling back to `pnpm rebuild better-sqlite3`) so a missing native binary fails the build. Runtime stage: `apk add ffmpeg chromaprint tini su-exec tzdata`, `/app/dist` + production `node_modules`, the ENV defaults, volumes, `EXPOSE 5055`, a node-fetch `HEALTHCHECK` on `/api/v1/health`, tini entrypoint, OCI labels.
+- `docker/entrypoint.sh` (POSIX sh): validates PUID/PGID/UMASK; as root it removes any account holding the requested uid/gid (such as the built-in `node` user), creates `hearer`, chowns `/data` and `/staging` (never `/music`, which only gets a writability warning), applies the umask and execs via `su-exec`. As non-root (`--user`) it only sets the umask and execs. `PUID=0` runs as root with a warning. A restart with unchanged ids skips user management.
+- `.github/workflows/ci.yml`: `check` job (format, lint, typecheck, test, `db:check`) and `docker` job (needs check). The docker job builds amd64 with `load: true`, smoke-tests `ffprobe`/`fpcalc`, boots with a tmp `/data` and `PUID=1234`, polls `/api/v1/health` for 30 s (logs on failure), asserts `hearer.db` is owned by 1234 and the server process runs as `hearer`, and boots again with `--user 4321:4321`. Only on a push to main does it log in to GHCR and push the multi-arch (amd64+arm64) image `ghcr.io/<lowercased owner>/hearer` tagged `edge` and `sha-<short>`. Actions used (latest majors found via `git ls-remote`, since the API was blocked): checkout v7, setup-node v7, pnpm/action-setup v6, setup-qemu v4, setup-buildx v4, metadata v6, build-push v7, login v4.
+- `.dockerignore`, `docker-compose.example.yml` (image `ghcr.io/OWNER/hearer:edge`, local-build comment, PUID/PGID/UMASK/TZ, optional BASE_URL/HEARER_SECRET, three volumes).
+
+**Verify:** Docker not available locally; docker build not run — will be verified by CI. Static checks only:
+
+```text
+actionlint v1.7.12 (with shellcheck) on ci.yml: clean
+shellcheck docker/entrypoint.sh: clean
+hadolint docker/Dockerfile: clean (DL3018 apk pinning ignored with comments)
+prettier --check .github docker-compose.example.yml: clean; compose YAML parses
+pnpm --filter server deploy --prod --legacy <tmp>, then require('better-sqlite3') in memory: ok
+UMASK=99 sh docker/entrypoint.sh true -> "UMASK must be 3 or 4 octal digits", exit 1
+```
+
+The root path of the entrypoint (user mapping, chown, su-exec) was not executed locally (it would modify this container's accounts); it is covered by the CI smoke test.
+
+**Deviations:** none; DECISIONS.md not amended. `pnpm format:check` currently fails on 4 files under `apps/server/src/jobs` (H-04's in-progress work, not touched here).
+
+**Next:** H-06.
+
+**Open questions:** `LABEL ...source` in the Dockerfile names the upstream repo (CI overrides labels via metadata-action). The static web path `/app/public` will need serving by the server in H-16. The compose example uses `OWNER` as a placeholder.
