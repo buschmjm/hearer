@@ -48,6 +48,13 @@ const AUTHENTICATED_ONLY = new Set([
   'GET /api/v1/artists/:mbid/albums',
   'GET /api/v1/albums/:mbid',
   'GET /api/v1/tracks/:mbid',
+  // Requests (H-11): scoped to the caller's own requests in the service (404 for others'),
+  // unless they hold VIEW_ALL_REQUESTS / MANAGE_REQUESTS.
+  'GET /api/v1/requests',
+  'GET /api/v1/requests/counts',
+  'GET /api/v1/requests/quota',
+  'GET /api/v1/requests/:id',
+  'POST /api/v1/requests/:id/cancel',
 ]);
 
 /** Prefixes that stay reachable before setup completes. */
