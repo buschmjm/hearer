@@ -79,3 +79,14 @@ export const setupAdminRequestSchema = z.object({
   displayName: z.string().trim().min(1).max(100).nullish(),
 });
 export type SetupAdminRequest = z.infer<typeof setupAdminRequestSchema>;
+
+// ---- public sign-in options ----
+
+/** `GET /auth/methods` (public): what the login page may offer, plus the branding it shows. */
+export const authMethodsSchema = z.object({
+  appTitle: z.string(),
+  local: z.boolean(),
+  jellyfin: z.boolean(),
+  oidc: z.object({ enabled: z.boolean(), buttonLabel: z.string() }),
+});
+export type AuthMethods = z.infer<typeof authMethodsSchema>;
