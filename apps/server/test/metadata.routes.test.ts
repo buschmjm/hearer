@@ -289,7 +289,7 @@ describe('browse', () => {
     expect(sent.query.get('limit')).toBe('5');
   });
 
-  it('returns an album with tracklist badges resolved in one query per table', async () => {
+  it('returns an album with tracklist badges resolved in a fixed number of queries', async () => {
     await start();
     const db = h.app.hearer.database;
     db.db
@@ -302,7 +302,8 @@ describe('browse', () => {
     expect(res.statusCode).toBe(200);
     const sql = prepare.mock.calls.map(([text]) => text);
     expect(sql.filter((q) => /from "requests"/i.test(q))).toHaveLength(1);
-    expect(sql.filter((q) => /from "library_items"/i.test(q)).length).toBeLessThanOrEqual(3);
+    // One exact and one fuzzy (name hint) query per kind, however many tracks the album has.
+    expect(sql.filter((q) => /from "library_items"/i.test(q)).length).toBeLessThanOrEqual(4);
 
     const album = res.json<ReleaseGroupDetail>();
     expect(album.tracks).toHaveLength(12);
