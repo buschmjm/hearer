@@ -452,6 +452,7 @@ db:check ok: schema matches 2 committed migration(s)
 **Open questions:** none.
 
 ## H-16b — Setup wizard
+## H-11 — Requests service + API + quotas + timeline
 
 **Status:** done
 
@@ -523,3 +524,64 @@ All matched files use Prettier code style!
 **Next:** H-15 (import), H-19 (review UI uses `UploadDetail`, `TagSet`, the review routes).
 
 **Open questions:** a batch with a member stuck in RECEIVING defers grouping and auto-approval until that member finishes, fails or expires (24 h). Release choice inspects the best 3 releases of a group, so a recording that appears only on later releases falls back to the representative release with the file's own track number.
+
+- `lib/events.ts`: `EventBus` (typed; `request.created|approved|declined|available|partially_available|failed|cancelled`, `upload.needs_review|imported|failed` placeholders), exposed as `app.hearer.events`. Listener errors (sync throw or rejected promise) are logged and swallowed; other listeners still run. H-21 subscribes with `on` / `onAny`.
+- `services/requests.ts` (`RequestsService`, `app.hearer.requests`):
+  - **One transition function** `transition(id, to, {actorId, note, patch})` with the documented `TRANSITIONS` table (header comment; also exported). It runs in a `BEGIN IMMEDIATE` transaction, re-checks the status in the `UPDATE ... WHERE status = from`, writes `request_events`, bumps `updated_at`, and only **after commit** emits the bus event (so listeners never see uncommitted state) and, for APPROVED, queues `requests.submit`. Illegal moves are 409 `invalid_transition` `{from,to}`. `request.approved` is emitted only for PENDING -> APPROVED (a retry is not a new approval); PROCESSING / AWAITING_UPLOAD emit nothing. `addNote` writes a status-less timeline entry.
+  - **Create:** permission per type (REQUEST / REQUEST_ALBUM / REQUEST_ARTIST; route guard is "any of the three"), cheap duplicate pre-check (no MusicBrainz cost), catalog resolve (title / artist / cover; tracks also store `parent_mbid`, the recording's home release group; unknown id 404, outage 502 `metadata_unavailable`), `evaluateRequest` AVAILABLE -> 409 `already_available` (PARTIALLY is requestable), then duplicate re-check + quota + insert in one immediate transaction (parallel creates cannot overshoot; tested). Duplicate = same type+mbid in PENDING/APPROVED/PROCESSING/AWAITING_UPLOAD/PARTIALLY_AVAILABLE, any user: 409 `already_requested` `{requestId,status}`. AUTO_APPROVE (permission only) writes PENDING then APPROVED ("Auto-approved") in the same transaction.
+  - **Quota:** per-user `request_quota_limit/days` override the matching `general.defaultRequestQuota` field independently; 0 = unlimited; ADMIN and MANAGE_REQUESTS exempt; counts every request created inside the rolling window except DECLINED/CANCELLED; the window is strict (`created_at > now - days`). 429 `quota_exceeded` details `{limit, used, resetsAt}` where resetsAt is when the oldest counted request leaves the window. `GET /requests/quota`.
+  - approve / decline (reason 1-500) / retry (FAILED only; refused with `already_requested` if a newer active request for the item exists; clears provider id/ref) / cancel (owner or manager; non-owners get 404; calls `provider.cancel(ref)` when submitted, a provider failure is noted on the timeline but does not block the cancel). Visibility: own requests, or all with VIEW_ALL_REQUESTS / MANAGE_REQUESTS; someone else's request id is 404 (no existence leak).
+  - `fulfillFromUpload(requestId, uploadId, {actorId?, partial?, note?})` for H-15: sets `fulfilled_by_upload_id` and moves to AVAILABLE (or PARTIALLY_AVAILABLE); a repeat partial only adds a note. Throws 409 for requests that are not approved yet or are final.
+- `routes/requests.ts`: `POST /requests`, `GET /requests` (own; `?all=1`; filters `status` (comma list), `type`, `requestedBy`; `sort=createdAt|updatedAt`, `order`, `offset`, `limit` <= 100; requester and decider display info), `GET /requests/counts` (every status present), `GET /requests/quota`, `GET /requests/:id` (with timeline), `POST /:id/approve|decline|retry|cancel`. DTOs in `packages/shared/src/dto/requests.ts` (`providerRef` is never exposed). The route matrix allowlist gained the five authenticated-only routes (list, counts, quota, get, cancel: ownership is enforced in the service); approve/decline/retry/create are permission guarded and covered by the matrix automatically.
+- `jobs/requestSubmit.ts` (`requests.submit {requestId}`, concurrency 2, 6 attempts, 30 s base backoff): picks a provider through the registry; `ProviderSkipError` -> next provider; `ProviderPermanentError` -> FAILED at once; other errors are rethrown for the runner's backoff and the last attempt moves the request to FAILED with the error. A request cancelled during the provider call is withdrawn from the provider instead of resurrected. **No enabled provider can take the request type -> FAILED with note "No fulfillment provider is available for <type> requests"** (chosen over leaving it APPROVED silently: it is visible, notifies, and Retry works once settings are fixed).
+- `jobs/requestAvailability.ts` (`requests.availability {requestIds?}`, concurrency 1): evaluates APPROVED / PROCESSING / AWAITING_UPLOAD / PARTIALLY_AVAILABLE requests with one memoized `AvailabilityRun`, transitions to AVAILABLE / PARTIALLY_AVAILABLE with system notes, ignores races, skips ids MusicBrainz no longer knows, and fails the job (retry) after finishing the rest when MusicBrainz is down. It also re-queues APPROVED requests untouched for 5 min (a crash between commit and enqueue); the submit job's unique key dedupes.
+- `adapters/fulfillment/{types,manual,registry}.ts`: the `FulfillmentProvider` interface (final form, incl. `testConnection?`, `describeConfig?`, three error classes), `ManualProvider` (`ref = manual:<id>`, AWAITING_UPLOAD) and `FulfillmentRegistry` (`select(request,{exclude})`, `get(id)`, `list()`; Manual only for now, H-12 adds Lidarr).
+- Wiring in `app.ts` (small block): `events`, `requests`, `fulfillment` on `app.hearer`; both jobs defined; routes registered.
+- Tests (`test/requests.create.test.ts`, `test/requests.flow.test.ts`, helper `test/helpers/requests.ts` with a fake MetadataProvider): create per type with the permission matrix, catalog data, duplicates, already_available, auto-approve, quota (default, per-user override, 0, window boundary, exempt roles, excluded statuses, 429 body, parallel), approve/decline/retry/cancel, the full 9x9 transition table, timeline content, events and listener failures, list visibility / filters / sort / paging, counts, availability job (partial -> full, ids, outage, stranded), submit job (Manual, no provider, skip, permanent, temporary, cancelled mid-flight), `fulfillFromUpload`.
+
+**Verify:** `pnpm --filter server test -- requests` then `pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm --filter server db:check && pnpm format:check`
+
+```text
+apps/server test:  Test Files  28 passed | 1 skipped (29)
+apps/server test:       Tests  751 passed | 4 skipped (755)
+db:check ok: schema matches 1 committed migration(s)
+Checking formatting...
+All matched files use Prettier code style!
+```
+
+**Deviations:** no schema change (the existing `requests.parent_mbid` is used). Events are emitted after commit rather than inside the transaction (deliberate, see above). More than 8 files (service, routes, two jobs, bus, DTOs, three fulfillment files, two test files + helper). DECISIONS.md not amended.
+**Next:** H-12 (Lidarr + poll job + provider routes; extends the registry).
+**Open questions:** none.
+
+## H-12 — Fulfillment providers: interface, Manual, Lidarr
+
+**Status:** done
+
+**Shipped:**
+
+- `adapters/fulfillment/types.ts` (interface from H-11, now with `configJsonSchema()` via zod `toJSONSchema`), `manual.ts`, `lidarr.ts`, `registry.ts`; the Lidarr and Manual setting schemas are now exported from `packages/shared/src/settings.ts` (`lidarrSettingsSchema`, `manualSettingsSchema`) and used as the providers' `configSchema`, so the stored settings and the form schema cannot drift. Settings shape unchanged.
+- **Lidarr** (`/api/v1`, `X-Api-Key` header only, 15 s timeout, sub-path URLs allowed, **disabled by default**):
+  - artist: `GET artist?mbId=` -> unknown: `artist/lookup?term=lidarr:<mbid>` + `POST artist` (monitored, `monitorNewItems: all`, `addOptions {monitor: all, searchForMissingAlbums: true}`); known: `PUT artist` monitored + `PUT album/monitor` for all its albums + `POST command ArtistSearch`.
+  - album: `GET album?foreignAlbumId=`; missing -> `album/lookup` names the artist, the artist is added with `monitor: none` / no search, then the album is looked up again. Not there yet (Lidarr still refreshing the artist, or the metadata profile excludes it) is a `ProviderTemporaryError`, retried by `requests.submit` with backoff (idempotent; the artist is not added twice). Then `PUT album/monitor` and `POST command AlbumSearch`.
+  - track: parent release group (`parent_mbid`, else `getRecording`) requested as an album when `trackPolicy` is `album`; `skip` or a track on no album throws `ProviderSkipError` and the submit job falls back to Manual. `supports.track` follows the policy.
+  - `provider_ref` = JSON `{v, kind, artistId, artistMbid, artistAdded, albumId?, albumMbid?, commandId?}` (not exposed by the API). `poll` reads `queue/details` and `command/{id}` (progress, stuck import, finished search, failed command). `cancel` unmonitors the album, or the artist only if this request added it. `testConnection` = `GET system/status`; `options()` = quality profiles, metadata profiles, root folders.
+  - Errors: 401/403 and other 4xx -> permanent (Lidarr's validation message is included), 429/5xx/network/timeout/non-JSON -> temporary.
+- **Fixtures are synthesized and unverified.** The Lidarr v1 OpenAPI document was reachable and was used for paths, parameters and field names (`artist?mbId=`, `album?foreignAlbumId=`, `album/monitor`, `queue/details?albumIds=`, `AddArtistOptions`, `MonitorTypes`, `NewItemMonitorTypes`, `CommandStatus`). It does not describe command-specific bodies; `ArtistSearch {artistId}` / `AlbumSearch {albumIds}` follow the Servarr wiki. `test/fixtures/lidarr/README.md`, the ADAPTERS.md section and the `lidarr.ts` header all say so.
+- **Registry** `FulfillmentRegistry`: Lidarr (enabled and `supports[type]`), then Manual (enabled); `select(request,{exclude})`, `get(id)` (works for disabled providers, needed for cancel/poll), `list()`, `lidarr(config)` for candidate configs. **No provider available -> the request goes to FAILED** with "No fulfillment provider is available for <type> requests" (documented in ADAPTERS.md; Retry works after fixing settings).
+- `routes/fulfillment.ts` (MANAGE_SETTINGS): `GET /api/v1/fulfillment/providers` (id, label, enabled, supports, settingsPath, JSON-schema config with `x-secret` on secret fields, masked current config), `POST /api/v1/settings/fulfillment/lidarr/test` (candidate config, masked key = stored key, always 200 `{ok, version?, message?}`), `GET /api/v1/settings/fulfillment/lidarr/options` (400 `provider_rejected`, 502 `provider_unavailable`).
+- `jobs/requestPoll.ts`: `requests.poll` every 5 min (scheduler), PROCESSING requests whose provider has `poll`; a timeline note only when the detail differs from the last note this job wrote (`addNoteIfChanged`), `failed` -> FAILED with the detail, a provider error on one request is logged and skipped.
+- `app.ts`: registry now built with `{settings, metadata, version, lidarr}`; `AppDeps.lidarrOptions` (tests); poll job defined and scheduled; routes registered. `test/auth.matrix.test.ts`: the "403 for a no-permission user" case now has a 60 s timeout (it logs in once per route and the API surface has grown; it was timing out at 5 s under load).
+- Tests (`test/fulfillment.lidarr.test.ts`, `test/fulfillment.flow.test.ts`, helper `test/helpers/lidarr-mock.ts`, a real HTTP server on port 0): API key header on every call and none in the query, artist add vs existing, album monitor + search, artist-refresh lag then success, track -> album and skip -> Manual, permanent/temporary errors, timeout, abort, poll states, cancel, testConnection, options, masked key (also encrypted at rest), admin routes and their permissions, provider selection, PLAN acceptance #4 end to end through the API (non-auto-approve user -> admin approves -> Lidarr gets a monitored album + AlbumSearch; with Lidarr disabled -> AWAITING_UPLOAD), completion only via library availability, retry exhaustion, cancel with Lidarr down, poll dedupe and failure.
+
+**Verify:** `pnpm --filter server test -- fulfillment`, then `pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm --filter server db:check && pnpm format:check`
+
+```text
+apps/server test:  Test Files  30 passed | 1 skipped (31)
+apps/server test:       Tests  815 passed | 4 skipped (819)
+db:check ok: schema matches 1 committed migration(s)
+All matched files use Prettier code style!
+```
+
+**Deviations:** no schema change. More than 8 files (provider, mock, fixtures, routes, job, two test files). A Lidarr search that finds nothing leaves the request in PROCESSING (poll note says so) until cancelled or retried; deciding "not found" is out of scope without real Lidarr behaviour to base it on. DECISIONS.md not amended.
+**Next:** H-15 calls `RequestsService.fulfillFromUpload`; H-21 subscribes to `app.hearer.events`; web batches read `/requests`, `/requests/counts`, `/requests/quota`, `/fulfillment/providers` and the Lidarr test/options routes.
+**Open questions:** (1) All Lidarr behaviour is unverified against a real instance (see above). (2) Adding an album whose artist Lidarr must first import relies on the artist refresh finishing within the submit job's retries (6 attempts, 30 s base backoff, about 15 minutes in total).

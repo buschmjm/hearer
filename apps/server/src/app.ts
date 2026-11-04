@@ -68,6 +68,16 @@ import { DuplicateChecker, MatchingService } from './services/matching.ts';
 import { UploadReviewService, type UploadEventSink } from './services/uploadReview.ts';
 import { uploadReviewRoutes } from './routes/uploads.review.ts';
 
+// H-11 requests
+import { FulfillmentRegistry } from './adapters/fulfillment/registry.ts';
+import { requestAvailabilityJob } from './jobs/requestAvailability.ts';
+import { REQUEST_POLL_INTERVAL_MS, REQUEST_POLL_JOB, requestPollJob } from './jobs/requestPoll.ts';
+import { requestSubmitJob } from './jobs/requestSubmit.ts';
+import { fulfillmentRoutes } from './routes/fulfillment.ts';
+import { EventBus, type UploadEventName, type UploadEventPayload } from './lib/events.ts';
+import { requestRoutes } from './routes/requests.ts';
+import { RequestsService } from './services/requests.ts';
+
 export { API_PREFIX };
 const JOB_SHUTDOWN_GRACE_MS = 5_000;
 
@@ -97,6 +107,12 @@ declare module 'fastify' {
       uploads: UploadsService;
       /** Upload review actions and auto-approval (H-14). */
       uploadReview: UploadReviewService;
+      /** In-process domain events (request.*, upload.*); notifications subscribe here. */
+      events: EventBus;
+      /** Requests: create, approve/decline/retry/cancel, timeline, quotas. */
+      requests: RequestsService;
+      /** Fulfillment provider selection (Manual, Lidarr). */
+      fulfillment: FulfillmentRegistry;
     };
   }
 }
@@ -145,6 +161,8 @@ export interface AppDeps {
     fpcalcTimeoutMs?: number;
     acoustIdLimiter?: AcoustIdClientOptions['limiter'];
   };
+  /** Lidarr HTTP tuning (tests): fetch implementation and timeout. */
+  lidarrOptions?: { fetch?: typeof fetch; timeoutMs?: number };
   /** Catalog requests per user per minute (tests). */
   searchRateLimitMax?: number;
 }
@@ -242,6 +260,36 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
   const library = new LibraryService({ db: database.db, settings, mediaServer });
   // H-10: library.sync job + schedules.
   registerLibrarySync(jobs, library);
+  // H-11: events, requests service and its jobs (`requests.availability` is enqueued by the sync).
+  const availability = new AvailabilityMatcher(database.db, metadata);
+  const events = new EventBus(app.log);
+  const fulfillment = new FulfillmentRegistry({
+    settings,
+    metadata,
+    version,
+    lidarr: deps.lidarrOptions,
+  });
+  const requests = new RequestsService({
+    db: database.db,
+    settings,
+    metadata,
+    availability,
+    events,
+    jobs,
+    fulfillment,
+    logger: app.log,
+  });
+  jobs.define(requestSubmitJob(requests));
+  jobs.define(requestAvailabilityJob({ requests, availability }));
+  // H-12: status polling for submitted requests (timeline visibility only).
+  jobs.define(requestPollJob(requests));
+  jobs.schedule({ type: REQUEST_POLL_JOB, every: REQUEST_POLL_INTERVAL_MS });
+  // Adapts the typed bus to the review service's loose emitter (upload.* events only).
+  const uploadEventSink: UploadEventSink = {
+    emit: (event, payload) => {
+      events.emit(event as UploadEventName, payload as UploadEventPayload);
+    },
+  };
   const uploadsService = new UploadsService({
     db: database.db,
     settings,
@@ -253,8 +301,7 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
     uploads: uploadsService,
     settings,
     jobs,
-    // The event bus (H-11) may not be decorated yet; look it up at emit time.
-    events: () => (app.hearer as { events?: UploadEventSink }).events,
+    events: () => uploadEventSink,
     log: app.log,
   });
   app.decorate('hearer', {
@@ -273,7 +320,10 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
       deps.libraryLookup ?? new FuzzyLibraryLookup(database.db),
     ),
     library,
-    availability: new AvailabilityMatcher(database.db, metadata),
+    availability,
+    events,
+    requests,
+    fulfillment,
     uploads: uploadsService,
     uploadReview,
   });
@@ -442,6 +492,11 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
   // H-13: tus receive and the upload JSON API.
   await app.register(uploadRoutes, { prefix: API_PREFIX });
   await app.register(uploadReviewRoutes, { prefix: API_PREFIX });
+
+  // H-11: requests API.
+  await app.register(requestRoutes, { prefix: API_PREFIX });
+  // H-12: fulfillment providers (list, Lidarr test and options).
+  await app.register(fulfillmentRoutes, { prefix: API_PREFIX });
 
   for (const plugin of deps.routes ?? []) {
     await app.register(plugin, { prefix: API_PREFIX });

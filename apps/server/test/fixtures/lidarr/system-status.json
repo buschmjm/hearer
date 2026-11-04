@@ -1,0 +1,7 @@
+{
+  "appName": "Lidarr",
+  "instanceName": "Lidarr",
+  "version": "2.9.6.4552",
+  "isDocker": true,
+  "urlBase": ""
+}

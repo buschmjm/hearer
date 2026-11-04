@@ -559,11 +559,11 @@ describe('events', () => {
   it('emits upload.needs_review and upload.duplicate when an event bus exists', async () => {
     rig = await startRig();
     const events: [string, Record<string, unknown>][] = [];
-    (rig.h.app.hearer as unknown as { events: unknown }).events = {
-      emit: (event: string, payload: Record<string, unknown>) => {
-        events.push([event, payload]);
-      },
-    };
+    for (const name of ['upload.needs_review', 'upload.duplicate'] as const) {
+      rig.h.app.hearer.events.on(name, (payload) => {
+        events.push([name, payload]);
+      });
+    }
     const file = makeAudio(rig.audioDir, 'ev.wav', { seconds: 384 });
     const id = await seedUpload(rig, { uploaderId: rig.aliceId, file, durationMs: 384_000 });
     await settled(rig, id);
