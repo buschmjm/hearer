@@ -20,3 +20,4 @@ export * from './dto/mediaserver.ts';
 export * from './dto/catalog.ts';
 export * from './dto/uploads.ts';
 export * from './dto/requests.ts';
+export * from './dto/notifications.ts';

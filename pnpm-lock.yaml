@@ -30,6 +30,9 @@ catalogs:
     '@types/node':
       specifier: 24.19.2
       version: 24.19.2
+    '@types/smtp-server':
+      specifier: 3.5.13
+      version: 3.5.13
     argon2:
       specifier: 0.45.2
       version: 0.45.2
@@ -63,6 +66,9 @@ catalogs:
     music-metadata:
       specifier: 12.3.4
       version: 12.3.4
+    nodemailer:
+      specifier: 10.3.1
+      version: 10.3.1
     openid-client:
       specifier: 6.8.9
       version: 6.8.9
@@ -75,6 +81,9 @@ catalogs:
     prettier:
       specifier: 3.9.10
       version: 3.9.10
+    smtp-server:
+      specifier: 3.21.3
+      version: 3.21.3
     tus-js-client:
       specifier: 4.3.1
       version: 4.3.1
@@ -170,6 +179,9 @@ importers:
       music-metadata:
         specifier: 'catalog:'
         version: 12.3.4
+      nodemailer:
+        specifier: 'catalog:'
+        version: 10.3.1
       openid-client:
         specifier: 'catalog:'
         version: 6.8.9
@@ -189,6 +201,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
+      '@types/smtp-server':
+        specifier: 'catalog:'
+        version: 3.5.13
       drizzle-kit:
         specifier: 'catalog:'
         version: 0.31.11
@@ -198,6 +213,9 @@ importers:
       eslint:
         specifier: 'catalog:'
         version: 10.14.0(jiti@2.7.0)
+      smtp-server:
+        specifier: 'catalog:'
+        version: 3.21.3
       tus-js-client:
         specifier: 'catalog:'
         version: 4.3.1
@@ -1361,6 +1379,9 @@ packages:
   '@types/node@24.19.2':
     resolution: {integrity: sha512-93d49wCWJkCyN87MxLpNN6KXPCwFw7bVUg79mGUV1OS40JGWwVCr8n61DXCSqz7CV6/VfPkb7xec7uP2M+QHWQ==}
 
+  '@types/nodemailer@8.0.2':
+    resolution: {integrity: sha512-c7M5ox8p0nEOfbJ2E9Qcmt8/QCu/VzsiAhzBiZbvky2PhKZDHpKB3sQHBM5MEZNkCfBOaS6S9//AGPRTNB7IaA==}
+
   '@types/react-dom@19.3.0':
     resolution: {integrity: sha512-ZI7bU42mZXXKHn/qNLEw2IrbiINU7X5+vfgdixBHkCNpYWXjKgfQ/P+uyGb5CjOLB9UcnTeg3rylQtV2hym44Q==}
     peerDependencies:
@@ -1368,6 +1389,9 @@ packages:
 
   '@types/react@19.3.0':
     resolution: {integrity: sha512-N0rFCuH9YoxG9/m61l9MfpJKfmLOVU0em7ipIz6TRgSSkvReLB9vL85GB+yr8Bs5leqpvg96JSwF4ZS1s4viQg==}
+
+  '@types/smtp-server@3.5.13':
+    resolution: {integrity: sha512-S3rGl2KbViH+98/CgHipPIWgtAFnjxLsppxIRbgJHNuZL7Y+py+7kZjT7xS+wOmCxYTn4O7IqLqkvekg99MDVQ==}
 
   '@typescript-eslint/eslint-plugin@8.72.1':
     resolution: {integrity: sha512-5CokTWXpmbylfFabsbvHC0CAw3XLaGnoa+nFJX5FR592h/LoZsENUE6p/rg5xvkKrFEXz6pYmgI29AgXc2N3BQ==}
@@ -2054,6 +2078,9 @@ packages:
     resolution: {integrity: sha512-aq+t5NAc+cS6rZQQVWC2x98CPqGtKKTMDd4Gaodv0wShnItdKg/51djkGJ1hqH+Oy0ivDftCbSLCQob8zso01w==}
     engines: {node: '>= 10'}
 
+  ipv6-normalize@1.0.1:
+    resolution: {integrity: sha512-Bm6H79i01DjgGTCWjUuCjJ6QDo1HB96PT/xCYuyJUP9WFbVDrLSbG4EZCvOCun2rNswZb0c3e4Jt/ws795esHA==}
+
   is-extglob@2.1.1:
     resolution: {integrity: sha512-SbKbANkN603Vi4jEZv49LeVJMn4yGwsbzZworEoyEiutsN3nJYdbO36zfhGJ6QEDpOZIFkDtnq5JRxmvl3jsoQ==}
     engines: {node: '>=0.10.0'}
@@ -2317,6 +2344,10 @@ packages:
     resolution: {integrity: sha512-6li2QanLsAXpIH2R6j77MzRyvOyrvdTqlKtO4CgBdHGNvN99ZZfyxszHc5o5+IZBWD5u6Hzwg83JoGXmqZNG9Q==}
     engines: {node: '>=18'}
 
+  nodemailer@10.3.1:
+    resolution: {integrity: sha512-uF0AFsJC07Y1vdW7p580DKAnh7rAO+4UPSSB3mDCPNDufoiaOebV6JmrzpxB14OjEEEiBsNdYoM2Y+fN8M7BBA==}
+    engines: {node: '>=20.0.0'}
+
   oauth4webapi@3.8.8:
     resolution: {integrity: sha512-8N28E+a/oxfXWBgOMt+ZP/JUf/XR+IFbvkAEPP3gznXOMv9BpAAwiIj0TFNz3tGTPc0ZQ8zmWBNgN1nAys0gng==}
 
@@ -2410,6 +2441,10 @@ packages:
 
   pump@3.0.4:
     resolution: {integrity: sha512-VS7sjc6KR7e1ukRFhQSY5LM2uBWAUPiOPa/A3mkKmiMwSmRFUITt0xuj+/lesgnCv+dPIEYlkzrcyXgquIHMcA==}
+
+  punycode.js@2.3.1:
+    resolution: {integrity: sha512-uxFIHU0YlHYhDQtV4R9J6a52SLx28BCjT+4ieh7IGbgwVJWO+km431c4yRlREUAsAmt/uMjQUyQHNEPf0M39CA==}
+    engines: {node: '>=6'}
 
   punycode@2.3.1:
     resolution: {integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==}
@@ -2542,6 +2577,10 @@ packages:
 
   signal-exit@3.0.7:
     resolution: {integrity: sha512-wnD2ZE+l+SPC/uoS0vXeE9L1+0wuaMqKlfz9AMUo38JsyLSBWSFcHR1Rri62LZc12vLr1gb3jl7iwQhgwpAbGQ==}
+
+  smtp-server@3.21.3:
+    resolution: {integrity: sha512-RJRuhJWt+Zs8/c9Pa1Qrzz7RO49iRxrdj+7CXjz+zwRZLVliYyM/vrqF4VxsFH67eLCNW9kM3o5K9tHvlPuiIw==}
+    engines: {node: '>=20.0.0'}
 
   sonic-boom@4.2.1:
     resolution: {integrity: sha512-w6AxtubXa2wTXAUsZMMWERrsIRAdrK0Sc+FUytWvYAhBJLyuI4llrMIC1DtlNSdI99EI86KZum2MMq3EAZlF9Q==}
@@ -3697,6 +3736,10 @@ snapshots:
     dependencies:
       undici-types: 7.24.6
 
+  '@types/nodemailer@8.0.2':
+    dependencies:
+      '@types/node': 24.19.2
+
   '@types/react-dom@19.3.0(@types/react@19.3.0)':
     dependencies:
       '@types/react': 19.3.0
@@ -3704,6 +3747,11 @@ snapshots:
   '@types/react@19.3.0':
     dependencies:
       csstype: 3.2.3
+
+  '@types/smtp-server@3.5.13':
+    dependencies:
+      '@types/node': 24.19.2
+      '@types/nodemailer': 8.0.2
 
   '@typescript-eslint/eslint-plugin@8.72.1(@typescript-eslint/parser@8.72.1(eslint@10.14.0(jiti@2.7.0))(typescript@6.0.3))(eslint@10.14.0(jiti@2.7.0))(typescript@6.0.3)':
     dependencies:
@@ -4388,6 +4436,8 @@ snapshots:
 
   ipaddr.js@2.5.0: {}
 
+  ipv6-normalize@1.0.1: {}
+
   is-extglob@2.1.1: {}
 
   is-glob@4.0.3:
@@ -4615,6 +4665,8 @@ snapshots:
 
   node-releases@2.0.63: {}
 
+  nodemailer@10.3.1: {}
+
   oauth4webapi@3.8.8: {}
 
   obug@3.0.0: {}
@@ -4731,6 +4783,8 @@ snapshots:
       end-of-stream: 1.4.5
       once: 1.4.0
 
+  punycode.js@2.3.1: {}
+
   punycode@2.3.1: {}
 
   qified@0.10.1:
@@ -4841,6 +4895,12 @@ snapshots:
   shell-quote@1.12.0: {}
 
   signal-exit@3.0.7: {}
+
+  smtp-server@3.21.3:
+    dependencies:
+      ipv6-normalize: 1.0.1
+      nodemailer: 10.3.1
+      punycode.js: 2.3.1
 
   sonic-boom@4.2.1:
     dependencies:

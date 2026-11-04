@@ -585,3 +585,31 @@ All matched files use Prettier code style!
 **Deviations:** no schema change. More than 8 files (provider, mock, fixtures, routes, job, two test files). A Lidarr search that finds nothing leaves the request in PROCESSING (poll note says so) until cancelled or retried; deciding "not found" is out of scope without real Lidarr behaviour to base it on. DECISIONS.md not amended.
 **Next:** H-15 calls `RequestsService.fulfillFromUpload`; H-21 subscribes to `app.hearer.events`; web batches read `/requests`, `/requests/counts`, `/requests/quota`, `/fulfillment/providers` and the Lidarr test/options routes.
 **Open questions:** (1) All Lidarr behaviour is unverified against a real instance (see above). (2) Adding an album whose artist Lidarr must first import relies on the artist refresh finishing within the submit job's retries (6 attempts, 30 s base backoff, about 15 minutes in total).
+
+## H-21 - Notifications: agents, events, per-user prefs (server side)
+
+**Status:** done
+
+**Shipped:**
+
+- `adapters/notify/{types,webhook,discord,slack,ntfy,smtp,registry}.ts`: `NotificationAgent` (`id`, `label`, `configSchema`, `secrets`, `send`, optional `test`), an erased form for the registry, JSON Schema rendering with `x-secret`, and shared HTTP helpers (timeouts, 429/408/5xx retryable, other non-2xx `PermanentJobError`, URLs never in error text). Webhook (`{event,message,data}`, custom headers, `Authorization`, `X-Hearer-Signature: sha256=` HMAC over the raw body), Discord (embed with the real length limits and the 6000 total), Slack (Block Kit), ntfy (header API, RFC 2047 titles, Bearer/Basic), SMTP (nodemailer 10.3.1, HTML + text, 4xx/connection retry, 5xx/auth permanent).
+- `services/notifications.ts`: `NotificationService` (bus subscription, English `EN` catalog and templates, message building with deep links from `general.applicationUrl`, bitmask fan-out, target CRUD with SecretBox encryption + masked echo, test sends, per-user prefs). `jobs/notifySend.ts`: `notify.send` (5 attempts, 15 s base backoff, concurrency 4) with the rendered message snapshotted in the payload.
+- `routes/notifications.ts`: `GET /notifications/agents`, `GET/POST /notifications/targets`, `GET/PUT/DELETE /notifications/targets/:id`, `POST /notifications/targets/:id/test`, `POST /notifications/test` (MANAGE_SETTINGS), `GET/PUT /auth/me/notifications` (any signed-in user). Matrix test updated for the two user routes.
+- Shared: `dto/notifications.ts` (messages, agents, targets, tests, `userNotifyPrefsSchema`); `NOTIFICATION_EVENTS` renamed `request.pending` to `request.created` (same bit) and extended (append-only) with `request.partially_available`, `upload.duplicate`, `test`; `SUBSCRIBABLE_NOTIFICATION_EVENTS`. `UserNotifyPrefs` in the schema now comes from shared (`{email?, ntfy?}`).
+- Deps (catalog, exact): `nodemailer` 10.3.1 (ships its own types), dev `smtp-server` 3.21.3 + `@types/smtp-server` 3.5.13. `docs/ADAPTERS.md` has a NotificationAgent section including the per-user opt-in rules.
+- Tests: `notify.agents.test.ts` (28: each agent against a local HTTP mock and a real local SMTP server, HMAC verified, headers, embed truncation, Slack blocks, classification) and `notify.service.test.ts` (27: encrypted at rest, masked, echo keeps secret, clear/replace, validation, permissions, test endpoints, bitmask fan-out, disabled targets, snapshot content, runner retry vs dead with `last_error`, broken target and failing queue do not break the flow, per-user email and ntfy, acceptance #4).
+
+**Per-user rules:** email needs an enabled SMTP target with `userEmail: true` plus an address on the account; the personal ntfy topic is published through the enabled ntfy target with `userTopics: true`, else `https://ntfy.sh`. Users only hear about their own requests/uploads.
+
+**Verify:** `pnpm --filter server test -- notify`, then `pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm --filter server db:check && pnpm format:check`
+
+```text
+apps/server test:  Test Files  41 passed | 1 skipped (42)
+apps/server test:       Tests  1097 passed | 4 skipped (1101)
+db:check ok: schema matches 2 committed migration(s)
+All matched files use Prettier code style!
+```
+
+**Deviations:** no migration (the `name` column already exists; `userEmail`/`userTopics` live in the target config), so no `last_error`/`last_sent_at` on targets: the failure detail is the job's `last_error`. The admin `request.created` notification is skipped for auto-approved requests. DECISIONS.md not amended.
+**Next:** H-20 settings tab builds on `GET /notifications/agents` (JSON schema with `x-secret`, `defaultConfig`) and the targets/test routes; `GET/PUT /auth/me/notifications` for the profile page.
+**Open questions:** (1) `upload.*` payload fields (`detail`, `score`, `reason`, `coverUrl`) are read opportunistically; H-15 should emit `upload.imported` with `title`/`artist`. (2) Personal ntfy on a self-hosted server requires flagging one ntfy target `userTopics`.

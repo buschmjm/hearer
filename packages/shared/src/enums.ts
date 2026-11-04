@@ -42,8 +42,13 @@ export type LibraryItemKind = (typeof LIBRARY_ITEM_KINDS)[number];
 export const NOTIFICATION_AGENTS = ['webhook', 'discord', 'slack', 'ntfy', 'smtp'] as const;
 export type NotificationAgent = (typeof NOTIFICATION_AGENTS)[number];
 
+/**
+ * Notification events. The position of an event is its bit in `notification_targets.events`, so
+ * new events are only ever appended. `request.created` is a new request awaiting approval.
+ * `test` is only sent by the "send test" actions and cannot be subscribed to.
+ */
 export const NOTIFICATION_EVENTS = [
-  'request.pending',
+  'request.created',
   'request.approved',
   'request.declined',
   'request.available',
@@ -51,8 +56,16 @@ export const NOTIFICATION_EVENTS = [
   'upload.needs_review',
   'upload.imported',
   'upload.failed',
+  'request.partially_available',
+  'upload.duplicate',
+  'test',
 ] as const;
 export type NotificationEvent = (typeof NOTIFICATION_EVENTS)[number];
+
+/** The events a target or a user can subscribe to (everything but `test`). */
+export const SUBSCRIBABLE_NOTIFICATION_EVENTS = NOTIFICATION_EVENTS.filter(
+  (event): event is Exclude<NotificationEvent, 'test'> => event !== 'test',
+);
 
 /** Bit for a notification event, used in notification_targets.events. */
 export function notificationEventBit(event: NotificationEvent): number {
