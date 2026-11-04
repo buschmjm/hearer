@@ -201,6 +201,17 @@ The root path of the entrypoint (user mapping, chown, su-exec) was not executed 
 
 **Open questions:** `LABEL ...source` in the Dockerfile names the upstream repo (CI overrides labels via metadata-action). The static web path `/app/public` will need serving by the server in H-16. The compose example uses `OWNER` as a placeholder.
 
+**CI verification (added by orchestrator):** PR #1 run on `c905437`: both jobs green. Docker smoke in CI:
+
+```text
+ffprobe version 8.1.3 Copyright (c) 2007-2026 the FFmpeg developers
+fpcalc version 1.6.0 (FFmpeg Lavc62.28.100 Lavf62.12.100 SwR6.3.100)
+{"status":"ok","version":"0.0.0","uptimeSeconds":1.03,"checks":{"db":{"status":"ok"}}}
+server process uid(s): 1234
+```
+
+Two CI-script fixes were needed: the run-as-PUID check matched tini (root, PID 1) and Node 24 reports `comm` as `MainThread`; it now reads `/proc/*/cmdline`.
+
 ## H-04 — DB-backed job runner
 
 **Status:** done
