@@ -110,7 +110,7 @@ export function RequestActions({
           }}
         >
           <X className="size-3.5" aria-hidden />
-          <span className={compact ? 'sr-only' : undefined}>Cancel</span>
+          <span className={compact ? 'md:sr-only' : undefined}>Cancel</span>
         </Button>
       )}
 

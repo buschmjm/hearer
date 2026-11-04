@@ -23,7 +23,7 @@ export function SaveBar({
     <div
       className={
         dirty
-          ? 'sticky bottom-[4.5rem] z-10 mt-6 rounded-2xl border border-accent/50 bg-surface/95 p-3 shadow-card backdrop-blur lg:bottom-4'
+          ? 'sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-10 mt-6 rounded-2xl border border-accent/50 bg-surface/95 p-3 shadow-card backdrop-blur lg:bottom-4'
           : 'mt-6 rounded-2xl border border-line bg-surface p-3'
       }
     >

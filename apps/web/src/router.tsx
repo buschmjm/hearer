@@ -13,43 +13,76 @@ import { meQuery } from './api/auth.ts';
 import { ensureSetupStatus } from './api/setup.ts';
 import { ErrorFallback, NotFound } from './components/ErrorPages.tsx';
 import { Layout } from './components/Layout.tsx';
+import { lazyPage } from './lib/lazyPage.tsx';
 import { safeReturnTo } from './lib/returnTo.ts';
 import { SEARCH_TYPES } from '@hearer/shared';
 import { AlbumPage } from './routes/album.tsx';
 import { ArtistPage } from './routes/artist.tsx';
 import { HomePage } from './routes/home.tsx';
 import { LoginPage } from './routes/login.tsx';
-import { RequestDetailPage } from './routes/request-detail.tsx';
-import { RequestsPage } from './routes/requests.tsx';
-import { requestsSearchSchema } from './lib/requestFilters.ts';
+import { requestsSearchSchema, type RequestsSearch } from './lib/requestFilters.ts';
 import { SearchPage } from './routes/search.tsx';
 import { SetupPage } from './routes/setup.tsx';
-import { UploadPage } from './routes/upload.tsx';
-import { UploadBatchPage } from './routes/uploadBatch.tsx';
-import { UploadReviewPage } from './routes/uploadReview.tsx';
-import { UploadsPage } from './routes/uploads.tsx';
 import { TrackPage } from './routes/track.tsx';
 // H-20: admin, settings, users, jobs and account pages.
-import { AccountNotificationsPage, AccountPage, ApiKeysPage } from './routes/account.tsx';
-import { AdminPage } from './routes/admin.tsx';
-import { JobsPage } from './routes/jobs.tsx';
-import {
-  AuthSettingsPage,
-  FulfillmentSettingsPage,
-  GeneralSettingsPage,
-  LibrarySettingsPage,
-  MediaServerSettingsPage,
-  MetadataSettingsPage,
-  NotificationsSettingsPage,
-  SettingsLayout,
-} from './routes/settings.tsx';
-import { UsersPage } from './routes/users.tsx';
 
 /*
  * Routes are declared in code (no generated route tree). To add a page: create a component under
  * src/routes, then add a `createRoute` below with `getParentRoute: () => appRoute` (signed-in
  * area) and list it in `routeTree`. Nav entries live in lib/nav.ts.
  */
+
+/*
+ * Pages that most visitors never open (uploads, admin, settings, account, request queue) are
+ * loaded on demand so the initial bundle stays small. Search, catalog pages, login and the setup
+ * wizard stay in the main chunk.
+ */
+const RequestDetailPage = lazyPage<{ id: string }>(() =>
+  import('./routes/request-detail.tsx').then((m) => m.RequestDetailPage),
+);
+const RequestsPage = lazyPage<{ search: RequestsSearch }>(() =>
+  import('./routes/requests.tsx').then((m) => m.RequestsPage),
+);
+const UploadPage = lazyPage(() => import('./routes/upload.tsx').then((m) => m.UploadPage));
+const UploadsPage = lazyPage(() => import('./routes/uploads.tsx').then((m) => m.UploadsPage));
+const UploadBatchPage = lazyPage<{ batchId: string }>(() =>
+  import('./routes/uploadBatch.tsx').then((m) => m.UploadBatchPage),
+);
+const UploadReviewPage = lazyPage<{ id: string }>(() =>
+  import('./routes/uploadReview.tsx').then((m) => m.UploadReviewPage),
+);
+const AdminPage = lazyPage(() => import('./routes/admin.tsx').then((m) => m.AdminPage));
+const JobsPage = lazyPage(() => import('./routes/jobs.tsx').then((m) => m.JobsPage));
+const UsersPage = lazyPage(() => import('./routes/users.tsx').then((m) => m.UsersPage));
+const AccountPage = lazyPage(() => import('./routes/account.tsx').then((m) => m.AccountPage));
+const AccountNotificationsPage = lazyPage(() =>
+  import('./routes/account.tsx').then((m) => m.AccountNotificationsPage),
+);
+const ApiKeysPage = lazyPage(() => import('./routes/account.tsx').then((m) => m.ApiKeysPage));
+const SettingsLayout = lazyPage(() =>
+  import('./routes/settings.tsx').then((m) => m.SettingsLayout),
+);
+const GeneralSettingsPage = lazyPage(() =>
+  import('./routes/settings.tsx').then((m) => m.GeneralSettingsPage),
+);
+const AuthSettingsPage = lazyPage(() =>
+  import('./routes/settings.tsx').then((m) => m.AuthSettingsPage),
+);
+const MediaServerSettingsPage = lazyPage(() =>
+  import('./routes/settings.tsx').then((m) => m.MediaServerSettingsPage),
+);
+const LibrarySettingsPage = lazyPage(() =>
+  import('./routes/settings.tsx').then((m) => m.LibrarySettingsPage),
+);
+const MetadataSettingsPage = lazyPage(() =>
+  import('./routes/settings.tsx').then((m) => m.MetadataSettingsPage),
+);
+const FulfillmentSettingsPage = lazyPage(() =>
+  import('./routes/settings.tsx').then((m) => m.FulfillmentSettingsPage),
+);
+const NotificationsSettingsPage = lazyPage(() =>
+  import('./routes/settings.tsx').then((m) => m.NotificationsSettingsPage),
+);
 
 export interface RouterContext {
   queryClient: QueryClient;

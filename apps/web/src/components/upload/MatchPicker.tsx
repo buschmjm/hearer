@@ -32,7 +32,8 @@ export function MatchPicker({
   return (
     <ul role="radiogroup" aria-label="Match candidates" className="space-y-2">
       {candidates.map((c, index) => {
-        const selected = c.id === selectedId;
+        const selected =
+          c.id === selectedId && candidates.findIndex((x) => x.id === c.id) === index;
         const pct = Math.round(c.score * 100);
         const delta = durationDelta(c.lengthMs, fileDurationMs);
         const year = c.date?.slice(0, 4);
