@@ -28,6 +28,9 @@ const PUBLIC = new Set([
   'POST /api/v1/setup/admin', // first admin; 409s once any user exists
   'POST /api/v1/auth/login', // credentials in the body
   'POST /api/v1/auth/logout', // clears whatever cookie it was sent
+  'GET /api/v1/auth/oidc/config', // the login page needs the button label
+  'GET /api/v1/auth/oidc/login', // starts the browser redirect to the IdP
+  'GET /api/v1/auth/oidc/callback', // the IdP redirects here; validated by the signed transaction
 ]);
 
 /** Routes any signed-in user may call (no specific permission bit needed). */
@@ -47,6 +50,8 @@ const OPEN_BEFORE_SETUP = [
   '/api/v1/auth',
   '/api/v1/setup',
 ];
+/** Single sign-on cannot bootstrap the app, so it stays gated inside the open `auth` prefix. */
+const GATED_BEFORE_SETUP = '/api/v1/auth/oidc';
 
 interface RouteKey {
   method: string;
@@ -165,7 +170,9 @@ describe('route-level permission matrix', () => {
   it('gates every route outside the open prefixes with 503 until setup completes', async () => {
     const routes = await harnessWithRoutes();
     const gated = routes.filter(
-      (r) => !OPEN_BEFORE_SETUP.some((p) => r.url === p || r.url.startsWith(`${p}/`)),
+      (r) =>
+        r.url.startsWith(GATED_BEFORE_SETUP) ||
+        !OPEN_BEFORE_SETUP.some((p) => r.url === p || r.url.startsWith(`${p}/`)),
     );
     expect(gated.length).toBeGreaterThan(5);
     for (const route of gated) {

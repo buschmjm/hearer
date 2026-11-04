@@ -28,6 +28,9 @@ const OPEN_BEFORE_SETUP = ['health', 'auth', 'setup', 'openapi.json'].map(
   (name) => `${API_PREFIX}/${name}`,
 );
 
+/** Gated until setup completes even though it lives under the open `auth` prefix. */
+const OIDC_PREFIX = `${API_PREFIX}/auth/oidc`;
+
 /**
  * Until the wizard finishes, every API route outside health, auth, setup and the OpenAPI
  * document answers 503 `setup_required`. Unknown routes still 404, and non-API paths (the web
@@ -38,6 +41,13 @@ export function registerSetupGate(app: FastifyInstance): void {
     if (request.is404) return Promise.resolve();
     const url = request.routeOptions.url ?? '';
     if (!url.startsWith(`${API_PREFIX}/`)) return Promise.resolve();
+    // Single sign-on can never bootstrap Hearer: the local admin from the wizard configures it.
+    if (url === OIDC_PREFIX || url.startsWith(`${OIDC_PREFIX}/`)) {
+      if (!app.hearer.settings.get('general').setupComplete) {
+        throw new HttpError(503, 'setup_required', 'Setup is not complete');
+      }
+      return Promise.resolve();
+    }
     if (OPEN_BEFORE_SETUP.some((open) => url === open || url.startsWith(`${open}/`))) {
       return Promise.resolve();
     }
