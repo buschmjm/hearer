@@ -109,6 +109,19 @@ export class FakeMetadata implements Partial<MetadataProvider> {
     });
   }
 
+  addArtist(mbid: string, name: string): void {
+    this.artists.set(mbid, {
+      mbid,
+      name,
+      sortName: name,
+      type: 'Group',
+      country: null,
+      disambiguation: '',
+      score: null,
+      lifeSpan: null,
+    });
+  }
+
   /** Another album with the same tracks as ALBUM, for tests that need several requests. */
   addAlbum(mbid: string, title: string): void {
     const base = this.groups.get(ALBUM);

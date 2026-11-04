@@ -1,9 +1,9 @@
-import { z } from 'zod';
+import { manualSettingsSchema } from '@hearer/shared';
 import type { FulfillmentProvider, RequestRecord, SubmitResult } from './types.ts';
 
 export const MANUAL_PROVIDER_ID = 'manual';
 
-export const manualConfigSchema = z.object({ enabled: z.boolean().default(true) });
+export const manualConfigSchema = manualSettingsSchema;
 
 /**
  * Manual fulfillment: nothing is contacted. The request waits in `AWAITING_UPLOAD` until
@@ -15,6 +15,11 @@ export class ManualProvider implements FulfillmentProvider {
   readonly label = 'Manual (upload)';
   readonly supports = { track: true, album: true, artist: true };
   readonly configSchema = manualConfigSchema;
+  readonly #enabled: boolean;
+
+  constructor(enabled = true) {
+    this.#enabled = enabled;
+  }
 
   submit(request: RequestRecord): Promise<SubmitResult> {
     return Promise.resolve({
@@ -29,6 +34,6 @@ export class ManualProvider implements FulfillmentProvider {
   }
 
   describeConfig(): Record<string, unknown> {
-    return {};
+    return { enabled: this.#enabled };
   }
 }

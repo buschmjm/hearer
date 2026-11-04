@@ -117,19 +117,26 @@ const metadata = z.object({
     .prefault({}),
 });
 
+/** Manual fulfillment settings (also the provider's config schema). */
+export const manualSettingsSchema = z.object({ enabled: z.boolean().default(true) });
+
+/** Lidarr fulfillment settings (also the provider's config schema, which drives the form). */
+export const lidarrSettingsSchema = z.object({
+  /** Off by default: an admin opts in once a Lidarr instance exists. */
+  enabled: z.boolean().default(false),
+  url: optionalUrl.default(''),
+  apiKey: z.string().default(''),
+  rootFolder: z.string().default(''),
+  qualityProfileId: z.number().int().min(0).default(0),
+  metadataProfileId: z.number().int().min(0).default(0),
+  /** Track requests: 'album' requests the parent album, 'skip' hands them to Manual. */
+  trackPolicy: z.enum(['album', 'skip']).default('album'),
+});
+export type LidarrSettings = z.output<typeof lidarrSettingsSchema>;
+
 const fulfillment = z.object({
-  manual: z.object({ enabled: z.boolean().default(true) }).prefault({}),
-  lidarr: z
-    .object({
-      enabled: z.boolean().default(false),
-      url: optionalUrl.default(''),
-      apiKey: z.string().default(''),
-      rootFolder: z.string().default(''),
-      qualityProfileId: z.number().int().min(0).default(0),
-      metadataProfileId: z.number().int().min(0).default(0),
-      trackPolicy: z.enum(['album', 'skip']).default('album'),
-    })
-    .prefault({}),
+  manual: manualSettingsSchema.prefault({}),
+  lidarr: lidarrSettingsSchema.prefault({}),
 });
 
 interface SettingDef<S extends z.ZodType> {

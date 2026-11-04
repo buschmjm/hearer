@@ -449,3 +449,36 @@ All matched files use Prettier code style!
 **Deviations:** no schema change (the existing `requests.parent_mbid` is used). Events are emitted after commit rather than inside the transaction (deliberate, see above). More than 8 files (service, routes, two jobs, bus, DTOs, three fulfillment files, two test files + helper). DECISIONS.md not amended.
 **Next:** H-12 (Lidarr + poll job + provider routes; extends the registry).
 **Open questions:** none.
+
+## H-12 — Fulfillment providers: interface, Manual, Lidarr
+
+**Status:** done
+
+**Shipped:**
+
+- `adapters/fulfillment/types.ts` (interface from H-11, now with `configJsonSchema()` via zod `toJSONSchema`), `manual.ts`, `lidarr.ts`, `registry.ts`; the Lidarr and Manual setting schemas are now exported from `packages/shared/src/settings.ts` (`lidarrSettingsSchema`, `manualSettingsSchema`) and used as the providers' `configSchema`, so the stored settings and the form schema cannot drift. Settings shape unchanged.
+- **Lidarr** (`/api/v1`, `X-Api-Key` header only, 15 s timeout, sub-path URLs allowed, **disabled by default**):
+  - artist: `GET artist?mbId=` -> unknown: `artist/lookup?term=lidarr:<mbid>` + `POST artist` (monitored, `monitorNewItems: all`, `addOptions {monitor: all, searchForMissingAlbums: true}`); known: `PUT artist` monitored + `PUT album/monitor` for all its albums + `POST command ArtistSearch`.
+  - album: `GET album?foreignAlbumId=`; missing -> `album/lookup` names the artist, the artist is added with `monitor: none` / no search, then the album is looked up again. Not there yet (Lidarr still refreshing the artist, or the metadata profile excludes it) is a `ProviderTemporaryError`, retried by `requests.submit` with backoff (idempotent; the artist is not added twice). Then `PUT album/monitor` and `POST command AlbumSearch`.
+  - track: parent release group (`parent_mbid`, else `getRecording`) requested as an album when `trackPolicy` is `album`; `skip` or a track on no album throws `ProviderSkipError` and the submit job falls back to Manual. `supports.track` follows the policy.
+  - `provider_ref` = JSON `{v, kind, artistId, artistMbid, artistAdded, albumId?, albumMbid?, commandId?}` (not exposed by the API). `poll` reads `queue/details` and `command/{id}` (progress, stuck import, finished search, failed command). `cancel` unmonitors the album, or the artist only if this request added it. `testConnection` = `GET system/status`; `options()` = quality profiles, metadata profiles, root folders.
+  - Errors: 401/403 and other 4xx -> permanent (Lidarr's validation message is included), 429/5xx/network/timeout/non-JSON -> temporary.
+- **Fixtures are synthesized and unverified.** The Lidarr v1 OpenAPI document was reachable and was used for paths, parameters and field names (`artist?mbId=`, `album?foreignAlbumId=`, `album/monitor`, `queue/details?albumIds=`, `AddArtistOptions`, `MonitorTypes`, `NewItemMonitorTypes`, `CommandStatus`). It does not describe command-specific bodies; `ArtistSearch {artistId}` / `AlbumSearch {albumIds}` follow the Servarr wiki. `test/fixtures/lidarr/README.md`, the ADAPTERS.md section and the `lidarr.ts` header all say so.
+- **Registry** `FulfillmentRegistry`: Lidarr (enabled and `supports[type]`), then Manual (enabled); `select(request,{exclude})`, `get(id)` (works for disabled providers, needed for cancel/poll), `list()`, `lidarr(config)` for candidate configs. **No provider available -> the request goes to FAILED** with "No fulfillment provider is available for <type> requests" (documented in ADAPTERS.md; Retry works after fixing settings).
+- `routes/fulfillment.ts` (MANAGE_SETTINGS): `GET /api/v1/fulfillment/providers` (id, label, enabled, supports, settingsPath, JSON-schema config with `x-secret` on secret fields, masked current config), `POST /api/v1/settings/fulfillment/lidarr/test` (candidate config, masked key = stored key, always 200 `{ok, version?, message?}`), `GET /api/v1/settings/fulfillment/lidarr/options` (400 `provider_rejected`, 502 `provider_unavailable`).
+- `jobs/requestPoll.ts`: `requests.poll` every 5 min (scheduler), PROCESSING requests whose provider has `poll`; a timeline note only when the detail differs from the last note this job wrote (`addNoteIfChanged`), `failed` -> FAILED with the detail, a provider error on one request is logged and skipped.
+- `app.ts`: registry now built with `{settings, metadata, version, lidarr}`; `AppDeps.lidarrOptions` (tests); poll job defined and scheduled; routes registered. `test/auth.matrix.test.ts`: the "403 for a no-permission user" case now has a 60 s timeout (it logs in once per route and the API surface has grown; it was timing out at 5 s under load).
+- Tests (`test/fulfillment.lidarr.test.ts`, `test/fulfillment.flow.test.ts`, helper `test/helpers/lidarr-mock.ts`, a real HTTP server on port 0): API key header on every call and none in the query, artist add vs existing, album monitor + search, artist-refresh lag then success, track -> album and skip -> Manual, permanent/temporary errors, timeout, abort, poll states, cancel, testConnection, options, masked key (also encrypted at rest), admin routes and their permissions, provider selection, PLAN acceptance #4 end to end through the API (non-auto-approve user -> admin approves -> Lidarr gets a monitored album + AlbumSearch; with Lidarr disabled -> AWAITING_UPLOAD), completion only via library availability, retry exhaustion, cancel with Lidarr down, poll dedupe and failure.
+
+**Verify:** `pnpm --filter server test -- fulfillment`, then `pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm --filter server db:check && pnpm format:check`
+
+```text
+apps/server test:  Test Files  30 passed | 1 skipped (31)
+apps/server test:       Tests  815 passed | 4 skipped (819)
+db:check ok: schema matches 1 committed migration(s)
+All matched files use Prettier code style!
+```
+
+**Deviations:** no schema change. More than 8 files (provider, mock, fixtures, routes, job, two test files). A Lidarr search that finds nothing leaves the request in PROCESSING (poll note says so) until cancelled or retried; deciding "not found" is out of scope without real Lidarr behaviour to base it on. DECISIONS.md not amended.
+**Next:** H-15 calls `RequestsService.fulfillFromUpload`; H-21 subscribes to `app.hearer.events`; web batches read `/requests`, `/requests/counts`, `/requests/quota`, `/fulfillment/providers` and the Lidarr test/options routes.
+**Open questions:** (1) All Lidarr behaviour is unverified against a real instance (see above). (2) Adding an album whose artist Lidarr must first import relies on the artist refresh finishing within the submit job's retries (6 attempts, 30 s base backoff, about 15 minutes in total).

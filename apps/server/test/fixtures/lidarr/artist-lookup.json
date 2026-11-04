@@ -1,0 +1,9 @@
+[
+  {
+    "id": 0,
+    "artistName": "Radiohead",
+    "foreignArtistId": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+    "status": "continuing",
+    "monitored": false
+  }
+]
