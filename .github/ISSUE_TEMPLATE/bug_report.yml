@@ -1,0 +1,44 @@
+name: Bug report
+description: Something is broken or behaves unexpectedly
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Hearer version or image tag
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How are you running Hearer?
+      options: [Docker, Docker Compose, Kubernetes, From source, Other]
+    validations:
+      required: true
+  - type: input
+    id: mediaserver
+    attributes:
+      label: Media server and version
+      placeholder: Jellyfin 10.11.x
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant log output. Remove tokens, API keys and passwords first.
+      render: text
