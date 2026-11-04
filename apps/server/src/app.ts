@@ -31,6 +31,8 @@ import { SecretBox } from './lib/secrets.ts';
 import { SettingsService } from './services/settings.ts';
 import { UsersService } from './services/users.ts';
 import { authRoutes } from './routes/auth.ts';
+import { jellyfinAuthRoutes } from './auth/jellyfin.ts';
+import { MediaServerRegistry } from './adapters/mediaserver/registry.ts';
 import { healthRoutes, type HealthDeps } from './routes/health.ts';
 import { settingsRoutes } from './routes/settings.ts';
 import { registerSetupGate, setupRoutes } from './routes/setup.ts';
@@ -51,6 +53,8 @@ declare module 'fastify' {
       sessions: SessionService;
       apiKeys: ApiKeyService;
       auth: AuthHelpers;
+      /** Media server adapter built from the stored `mediaServer` settings. */
+      mediaServer: MediaServerRegistry;
     };
   }
 }
@@ -76,6 +80,8 @@ export interface AppDeps {
   jobs?: Partial<
     Pick<JobRunnerOptions, 'workerId' | 'pollIntervalMs' | 'maxConcurrency' | 'staleLockMs'>
   >;
+  /** Per-request timeout for media server calls in ms (tests shorten it). */
+  mediaServerTimeoutMs?: number;
   /** Override the logger (tests). Defaults to one built from config. */
   logger?: Logger;
   /** Auth tuning (tests): session lifetime/clock and the login rate limit. */
@@ -171,6 +177,7 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
     sessions,
     apiKeys,
     auth: createAuthHelpers({ config, settings, sessions, rateLimitMax: deps.auth?.rateLimitMax }),
+    mediaServer: new MediaServerRegistry(settings, secrets, version, deps.mediaServerTimeoutMs),
   });
   if (deps.startJobs) {
     app.addHook('onReady', () => {
@@ -266,6 +273,8 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
   );
 
   await app.register(authRoutes, { prefix: API_PREFIX });
+  // H-07: Jellyfin sign-in
+  await app.register(jellyfinAuthRoutes, { prefix: API_PREFIX });
   await app.register(setupRoutes(config), { prefix: API_PREFIX });
   await app.register(settingsRoutes, { prefix: API_PREFIX });
   await app.register(userRoutes, { prefix: API_PREFIX });

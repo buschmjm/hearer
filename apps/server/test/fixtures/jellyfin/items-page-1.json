@@ -1,0 +1,46 @@
+{
+  "Items": [
+    {
+      "Name": "Radiohead",
+      "ServerId": "8f1c5e0a7d2b4c6e9a3b1d4f5e6a7b8c",
+      "Id": "a1000000000000000000000000000001",
+      "Type": "MusicArtist",
+      "DateCreated": "2026-01-02T03:04:05.0000000Z",
+      "ProviderIds": { "MusicBrainzArtist": "a74b1b7f-71a5-4011-9441-d0b5e4122711" }
+    },
+    {
+      "Name": "OK Computer",
+      "ServerId": "8f1c5e0a7d2b4c6e9a3b1d4f5e6a7b8c",
+      "Id": "a2000000000000000000000000000002",
+      "Type": "MusicAlbum",
+      "AlbumArtist": "Radiohead",
+      "Path": "/music/Radiohead/OK Computer (1997)",
+      "DateCreated": "2026-01-02T03:04:06.0000000Z",
+      "ProviderIds": {
+        "MusicBrainzAlbum": "5a1a1c9f-1f6b-4e83-a7a4-3a3f06b1b1f1",
+        "MusicBrainzReleaseGroup": "b1392450-e666-3926-a536-22c65f834433",
+        "MusicBrainzAlbumArtist": "a74b1b7f-71a5-4011-9441-d0b5e4122711"
+      }
+    },
+    {
+      "Name": "Paranoid Android",
+      "ServerId": "8f1c5e0a7d2b4c6e9a3b1d4f5e6a7b8c",
+      "Id": "a3000000000000000000000000000003",
+      "Type": "Audio",
+      "Album": "OK Computer",
+      "AlbumArtist": "Radiohead",
+      "Artists": ["Radiohead"],
+      "RunTimeTicks": 2833520000,
+      "Path": "/music/Radiohead/OK Computer (1997)/02 - Paranoid Android.flac",
+      "DateCreated": "2026-01-02T03:04:07.0000000Z",
+      "ProviderIds": {
+        "MusicBrainzTrack": "0d1f1b8e-3c0a-4a3f-93a8-6d0b0f6d6c21",
+        "MusicBrainzAlbum": "5a1a1c9f-1f6b-4e83-a7a4-3a3f06b1b1f1",
+        "MusicBrainzReleaseGroup": "b1392450-e666-3926-a536-22c65f834433",
+        "MusicBrainzArtist": "a74b1b7f-71a5-4011-9441-d0b5e4122711"
+      }
+    }
+  ],
+  "TotalRecordCount": 6,
+  "StartIndex": 0
+}

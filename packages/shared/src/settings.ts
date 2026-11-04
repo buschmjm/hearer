@@ -47,7 +47,10 @@ const auth = z.object({
 
 const mediaServer = z.object({
   type: z.literal('jellyfin').default('jellyfin'),
+  /** Base URL Hearer uses to reach the server (may be an internal address). */
   url: optionalUrl.default(''),
+  /** URL users' browsers can reach, for "Open in Jellyfin" links; empty means use `url`. */
+  externalUrl: optionalUrl.default(''),
   apiKey: z.string().default(''),
   serverId: z.string().default(''),
   /** Restrict indexing to these server library ids; omitted means all music libraries. */

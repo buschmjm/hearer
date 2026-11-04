@@ -1,0 +1,42 @@
+{
+  "Items": [
+    {
+      "Name": "Karma Police",
+      "ServerId": "8f1c5e0a7d2b4c6e9a3b1d4f5e6a7b8c",
+      "Id": "a4000000000000000000000000000004",
+      "Type": "Audio",
+      "Album": "OK Computer",
+      "AlbumArtist": "Radiohead",
+      "Artists": ["Radiohead"],
+      "RunTimeTicks": 2619000000,
+      "Path": "/music/Radiohead/OK Computer (1997)/06 - Karma Police.flac",
+      "DateCreated": "2026-01-02T03:04:08.0000000Z",
+      "ProviderIds": {
+        "MusicBrainzRecording": "5b0c4a4e-2c0d-4c8b-8a3c-0a5b2f6f7e32",
+        "MusicBrainzAlbum": "5a1a1c9f-1f6b-4e83-a7a4-3a3f06b1b1f1"
+      }
+    },
+    {
+      "Name": "Untagged Demo",
+      "ServerId": "8f1c5e0a7d2b4c6e9a3b1d4f5e6a7b8c",
+      "Id": "a5000000000000000000000000000005",
+      "Type": "Audio",
+      "Artists": ["Some Band", "Guest"],
+      "RunTimeTicks": 1800000000,
+      "Path": "/music/Unsorted/demo.mp3",
+      "DateCreated": "2026-02-03T04:05:06.0000000Z",
+      "ProviderIds": {}
+    },
+    {
+      "Name": "Nameless Sampler",
+      "ServerId": "8f1c5e0a7d2b4c6e9a3b1d4f5e6a7b8c",
+      "Id": "a6000000000000000000000000000006",
+      "Type": "MusicAlbum",
+      "AlbumArtist": "Various Artists",
+      "Path": "/music/Various/Nameless Sampler",
+      "DateCreated": "2026-02-03T04:05:07.0000000Z"
+    }
+  ],
+  "TotalRecordCount": 6,
+  "StartIndex": 3
+}

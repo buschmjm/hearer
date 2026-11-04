@@ -1,6 +1,7 @@
 import {
   createCipheriv,
   createDecipheriv,
+  createHmac,
   hkdfSync,
   randomBytes,
   type CipherGCM,
@@ -32,6 +33,14 @@ export class SecretBox {
   constructor(keyMaterial: string | Buffer) {
     if (keyMaterial.length === 0) throw new SecretError('secret key material is empty');
     this.#key = Buffer.from(hkdfSync('sha256', keyMaterial, HKDF_SALT, HKDF_INFO, KEY_BYTES));
+  }
+
+  /**
+   * A stable, non-secret identifier derived from the key and a label (hex HMAC-SHA256). The same
+   * key and label always give the same value; it reveals nothing about the key.
+   */
+  deriveId(label: string): string {
+    return createHmac('sha256', this.#key).update(`hearer/id/${label}`).digest('hex');
   }
 
   static isEncrypted(value: string): boolean {

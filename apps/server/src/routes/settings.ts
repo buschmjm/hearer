@@ -1,8 +1,19 @@
-import { SETTINGS_CATALOG, isSettingsKey, type SettingsKey } from '@hearer/shared';
+import {
+  REDACTED_SECRET,
+  SETTINGS_CATALOG,
+  isSettingsKey,
+  mediaServerTestResultSchema,
+  type MediaServerInfoDto,
+  type MediaServerTestResult,
+  type SettingsKey,
+} from '@hearer/shared';
 import type { FastifyPluginCallbackZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { Permission } from '../auth/permissions.ts';
 import { requirePermission } from '../auth/guard.ts';
+import { mediaServerHttpError } from '../auth/jellyfin.ts';
+import { MediaServerError, MediaServerNotConfiguredError } from '../adapters/mediaserver/types.ts';
+import type { MediaServerRegistry } from '../adapters/mediaserver/registry.ts';
 import { HttpError, notFound } from '../lib/http-error.ts';
 import { SettingsValidationError, type SettingsService } from '../services/settings.ts';
 
@@ -49,6 +60,43 @@ export function saveSettingsSection(
   return settings.getPublic()[key];
 }
 
+/** Parse a candidate `mediaServer` config; a validation failure is a 400. */
+export function parseMediaServerCandidate(
+  body: Record<string, unknown>,
+): ReturnType<typeof SETTINGS_CATALOG.mediaServer.schema.parse> {
+  const parsed = SETTINGS_CATALOG.mediaServer.schema.safeParse(body);
+  if (!parsed.success) {
+    throw new HttpError(
+      400,
+      'validation_error',
+      'Invalid media server settings',
+      parsed.error.issues,
+    );
+  }
+  return parsed.data;
+}
+
+/**
+ * Try a candidate media server config without saving it. A masked API key means "use the stored
+ * one". Returns the server info, or throws the adapter's error (MediaServerError family).
+ */
+export async function testMediaServer(
+  registry: MediaServerRegistry,
+  body: Record<string, unknown>,
+): Promise<MediaServerInfoDto> {
+  const candidate = parseMediaServerCandidate(body);
+  if (candidate.apiKey === REDACTED_SECRET && !registry.isConfigured()) {
+    throw new MediaServerNotConfiguredError('No API key is stored yet; enter one');
+  }
+  return registry.forCandidate(candidate).testConnection();
+}
+
+/** The `{ok:false, error}` result for a failed test (codes match the API error envelope). */
+export function failedTestResult(err: MediaServerError): MediaServerTestResult {
+  const { code, message } = mediaServerHttpError(err);
+  return { ok: false, error: { code, message } };
+}
+
 export function parseSettingsKey(raw: string): SettingsKey {
   if (!isSettingsKey(raw)) throw notFound(`Unknown settings section "${raw}"`);
   return raw;
@@ -56,8 +104,32 @@ export function parseSettingsKey(raw: string): SettingsKey {
 
 /** Routes under /api/v1/settings (MANAGE_SETTINGS). Secrets are always masked. */
 export const settingsRoutes: FastifyPluginCallbackZod = (app, _options, done) => {
-  const { settings } = app.hearer;
+  const { settings, mediaServer } = app.hearer;
   const guard = [requirePermission(Permission.MANAGE_SETTINGS)];
+
+  // Registered before /settings/:key so the static path wins (find-my-way prefers it anyway).
+  app.post(
+    '/settings/mediaServer/test',
+    {
+      onRequest: guard,
+      schema: {
+        tags: ['settings'],
+        summary: 'Test a media server config without saving it',
+        description:
+          'Always answers 200; `ok` tells whether the server answered. A masked API key means the stored key.',
+        body: settingsBody,
+        response: { 200: mediaServerTestResultSchema },
+      },
+    },
+    async (request) => {
+      try {
+        return { ok: true, server: await testMediaServer(mediaServer, request.body) };
+      } catch (err) {
+        if (err instanceof MediaServerError) return failedTestResult(err);
+        throw err;
+      }
+    },
+  );
 
   app.get(
     '/settings',

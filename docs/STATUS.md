@@ -303,3 +303,26 @@ Smoke (`pnpm --filter server build`, temp `DATA_DIR`, `node dist/index.js`, curl
 **Next:** H-07 (Jellyfin login: use `users.findOrCreateExternalUser('jellyfin', ...)`, `auth.startSession(request, reply, userId)` and `app.hearer.settings`). Later route batches add `onRequest: [requirePermission(...)]` and must extend the matrix allowlists only when a route is truly public.
 
 **Open questions:** `PUT /settings/:key` is full-replace; the web settings UI must send the whole section (masked secrets echoed back). Also, with `auth.localEnabled=false` and no other provider enabled the API refuses the change, but an operator who disables local auth and later loses the external provider must recover through the database.
+
+## H-07 — Jellyfin adapter + Jellyfin login + user import
+
+**Status:** done (fixtures synthesized; nothing verified against a live Jellyfin)
+
+**Shipped:**
+
+- `adapters/mediaserver/types.ts`: `MediaServerAdapter` per PLAN, `ServerInfo`, `ExternalUser`, `LibraryItem`, `MediaServerError` / `MediaServerAuthError` / `MediaServerUnavailableError` / `MediaServerNotConfiguredError`.
+- `adapters/mediaserver/jellyfin.ts`: native `fetch`, `AbortSignal.timeout`, base URL normalization (sub-path kept), the `Authorization: MediaBrowser ...` header only (escaped values, Token only on API-key calls), `testConnection` (`/System/Info`, `versionSupported` false below 10.10), `authenticate` (`/Users/AuthenticateByName`, then closes the session it opened), `listUsers`, `iterateLibrary` (async generator, paged, `MinDateLastSaved`, `ParentId` per `libraryIds`), `notifyPathsChanged` with `/Library/Refresh` fallback, `itemUrl`. ProviderIds mapping documented in `docs/ADAPTERS.md` and `PROVIDER_KEYS` (accepts both `MusicBrainzRecording` and `MusicBrainzTrack`).
+- `adapters/mediaserver/registry.ts`: `getMediaServer(settings, deps)` and `MediaServerRegistry` (`app.hearer.mediaServer.get()/forCandidate()/isConfigured()`). `DeviceId` is derived from the secret key (`SecretBox.deriveId`), so nothing new is stored.
+- `auth/jellyfin.ts` + `POST /api/v1/auth/jellyfin` (public, rate limited, CSRF-exempt, respects `auth.jellyfinEnabled`; errors for this public route do not reveal the server URL). New accounts get `general.defaultPermissions` minus UPLOAD; Jellyfin admins do not become Hearer admins (reasons in `docs/ADAPTERS.md`). `UsersService.findOrCreateExternalUser` gained an optional `{permissions}` override, plus `getByExternal`.
+- Admin routes: `POST /settings/mediaServer/test` (always 200 `{ok, server | error}`, masked key = stored key), `GET|POST /users/import/jellyfin`, setup wizard section `mediaServer` (`PUT /setup/mediaServer` tests the connection first and stores the server id; 400 `media_server_test_failed` otherwise).
+- Shared: `mediaServer.externalUrl` setting, `dto/mediaserver.ts`.
+- Fixtures `apps/server/test/fixtures/jellyfin/*` (README marks them synthesized), a real `node:http` mock (`test/helpers/jellyfin-mock.ts`), tests `jellyfin.adapter`, `jellyfin.routes`, opt-in `jellyfin.live` (needs `JELLYFIN_TEST_URL` + `JELLYFIN_TEST_API_KEY`). The route matrix allowlist gained only `POST /api/v1/auth/jellyfin`.
+- `docs/ADAPTERS.md`: both contracts, Jellyfin endpoints, header, key mapping, live test instructions.
+
+**Verify:** `pnpm --filter server test -- jellyfin` and `pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm --filter server db:check && pnpm format:check` (see output in the handback report).
+
+**Deviations:** more than 8 files (adapter, registry, auth, mock, three test files, fixtures). No schema change or migration. DECISIONS.md not amended. `ProviderIds` recording key unverified (PLAN asked for a live check in H-07; none was possible).
+
+**Next:** H-10 (library sync can use `app.hearer.mediaServer.get().iterateLibrary`).
+
+**Open questions:** (1) Verify `MusicBrainzTrack` vs `MusicBrainzRecording` on a real 10.11 server. (2) Jellyfin item paths are returned as Jellyfin sees them; if its mount differs from Hearer's `MUSIC_DIR`, `notifyPathsChanged` and path matching need a configurable prefix mapping. (3) Jellyfin does not expose email, so Jellyfin users have none.
