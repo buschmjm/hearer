@@ -1,9 +1,11 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach } from 'vitest';
+import { toast } from '../src/lib/toast.ts';
 
 afterEach(() => {
   cleanup();
+  toast.clear();
   localStorage.clear();
   document.documentElement.removeAttribute('data-theme');
 });

@@ -43,6 +43,8 @@ export class Scheduler {
   readonly #opts: SchedulerOptions;
   readonly #specs: ScheduleSpec[] = [];
   readonly #timers = new Map<ScheduleSpec, NodeJS.Timeout>();
+  /** When each armed schedule fires next (ms), for the admin view. */
+  readonly #nextAt = new Map<ScheduleSpec, number>();
   #running = false;
 
   constructor(opts: SchedulerOptions) {
@@ -76,6 +78,16 @@ export class Scheduler {
     this.#running = false;
     for (const timer of this.#timers.values()) clearTimeout(timer);
     this.#timers.clear();
+    this.#nextAt.clear();
+  }
+
+  /** The registered schedules with their next fire time (null while the runner is stopped). */
+  list(): { spec: ScheduleSpec; key: string; nextRunAt: number | null }[] {
+    return this.#specs.map((spec) => ({
+      spec,
+      key: scheduleKey(spec),
+      nextRunAt: this.#nextAt.get(spec) ?? null,
+    }));
   }
 
   #fire(spec: ScheduleSpec): void {
@@ -95,6 +107,7 @@ export class Scheduler {
     } else {
       delay = nextDailyRun(this.#opts.now(), spec.dailyAtHour) - this.#opts.now();
     }
+    this.#nextAt.set(spec, this.#opts.now() + delay);
     const timer = setTimeout(() => {
       this.#fire(spec);
       this.#arm(spec, false);
