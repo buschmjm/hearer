@@ -38,6 +38,11 @@ import { healthRoutes, type HealthDeps } from './routes/health.ts';
 import { settingsRoutes } from './routes/settings.ts';
 import { registerSetupGate, setupRoutes } from './routes/setup.ts';
 import { userRoutes } from './routes/users.ts';
+// H-09 metadata
+import { MusicBrainzProvider, type MusicBrainzOptions } from './adapters/metadata/musicbrainz.ts';
+import type { MetadataProvider } from './adapters/metadata/types.ts';
+import { searchRoutes } from './routes/search.ts';
+import { BadgeService, type LibraryLookup } from './services/badges.ts';
 
 export { API_PREFIX };
 const JOB_SHUTDOWN_GRACE_MS = 5_000;
@@ -56,6 +61,10 @@ declare module 'fastify' {
       auth: AuthHelpers;
       /** Media server adapter built from the stored `mediaServer` settings. */
       mediaServer: MediaServerRegistry;
+      /** Catalog metadata (MusicBrainz by default). */
+      metadata: MetadataProvider;
+      /** Library and request badges for catalog items. */
+      badges: BadgeService;
     };
   }
 }
@@ -92,6 +101,14 @@ export interface AppDeps {
    * enumerate the API surface, e.g. for the route-level permission matrix.
    */
   onRoute?: (route: RouteOptions) => void;
+  /** Catalog metadata source. Defaults to MusicBrainz via the global rate limiter and mb_cache. */
+  metadata?: MetadataProvider;
+  /** MusicBrainz client tuning (tests): limiter, fetch, clock, retry backoff. */
+  metadataOptions?: Partial<Omit<MusicBrainzOptions, 'db' | 'settings' | 'logger'>>;
+  /** Library matching for badges. Defaults to exact MBID matches; H-10 supplies a fuzzy one. */
+  libraryLookup?: LibraryLookup;
+  /** Catalog requests per user per minute (tests). */
+  searchRateLimitMax?: number;
 }
 
 export interface ApiErrorBody {
@@ -179,6 +196,16 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
     apiKeys,
     auth: createAuthHelpers({ config, settings, sessions, rateLimitMax: deps.auth?.rateLimitMax }),
     mediaServer: new MediaServerRegistry(settings, secrets, version, deps.mediaServerTimeoutMs),
+    metadata:
+      deps.metadata ??
+      new MusicBrainzProvider({
+        db: database.db,
+        settings,
+        logger: app.log,
+        version,
+        ...deps.metadataOptions,
+      }),
+    badges: new BadgeService(database.db, deps.libraryLookup),
   });
   if (deps.startJobs) {
     app.addHook('onReady', () => {
@@ -281,6 +308,15 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
   await app.register(userRoutes, { prefix: API_PREFIX });
   // OIDC login (H-08)
   await app.register(oidcRoutes(config, { now: deps.auth?.now }), { prefix: API_PREFIX });
+  // H-09: catalog search and browse.
+  await app.register(
+    searchRoutes(
+      deps.searchRateLimitMax === undefined ? {} : { rateLimitMax: deps.searchRateLimitMax },
+    ),
+    {
+      prefix: API_PREFIX,
+    },
+  );
 
   for (const plugin of deps.routes ?? []) {
     await app.register(plugin, { prefix: API_PREFIX });

@@ -17,3 +17,4 @@ export * from './settings.ts';
 export * from './dto/auth.ts';
 export * from './dto/users.ts';
 export * from './dto/mediaserver.ts';
+export * from './dto/catalog.ts';

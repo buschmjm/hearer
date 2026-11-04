@@ -101,7 +101,13 @@ const metadata = z.object({
   musicBrainzBaseUrl: z.url().default('https://musicbrainz.org/ws/2'),
   coverArtBaseUrl: z.url().default('https://coverartarchive.org'),
   acoustIdApiKey: z.string().default(''),
-  cacheTtlDays: z.number().int().min(1).max(365).default(30),
+  /** How long MusicBrainz responses stay fresh in the cache. */
+  cacheTtl: z
+    .object({
+      entityDays: z.number().int().min(1).max(365).default(7),
+      searchDays: z.number().int().min(1).max(365).default(1),
+    })
+    .prefault({}),
 });
 
 const fulfillment = z.object({
