@@ -791,3 +791,45 @@ actionlint ci.yml release.yml: no findings
 **Next:** H-22b: E2E specs for the full flow (wizard, login, request album with Manual fulfillment, upload two tracks fulfilling it, availability, webhook), after H-19 and H-20 merge.
 
 **Open questions:** (1) Cover images from the mock Cover Art Archive are blocked in the browser by the CSP (`img-src` allows only coverartarchive.org and archive.org); the embed-into-file path (server side) works against the mock. H-22b should not assert visible covers. (2) The first release is `0.1.0` only if at least one `feat:` commit is on main since the manifest version; document if a fix-only history is ever released first. (3) `latest` does not exist until the first release is cut; until then the compose example needs `:edge`.
+
+## H-22b — Acceptance E2E specs and QA pass
+
+**Status:** done
+
+**Shipped (specs, commit "test: H-22b ..."):**
+
+- `e2e/full-flow.spec.ts`: an admin creates a regular user in the Users UI; that user finds OK Computer through search, requests the album and the track "Paranoid Android" from the album page; webhook `request.created` x2; the admin approves both in the /requests UI (Manual provider: AWAITING_UPLOAD, webhook `request.approved`); the user drops two generated FLACs on /upload picking "Fulfills request"; both reach "Needs review"; the admin approves the batch in the UI; files land at `Radiohead/OK Computer (1997)/NN - Title.flac` with MusicBrainz recording, release, release group and artist tags (read back with ffprobe); staging is empty; the Jellyfin mock recorded the rescan; after `api.syncLibrary()` the track request is AVAILABLE and the album request PARTIALLY_AVAILABLE (visible in the UI); webhooks `request.available`, `request.partially_available` and `upload.imported` arrived; the cover renders from the mock mirror (CSP fix). Design choice: the fixture album has 12 tracks, so two uploads honestly make the album partial; the AVAILABLE transition is exercised by the separate track request, which the library matcher completes.
+- `e2e/auth.spec.ts`: Jellyfin sign-in through the login page (mock Jellyfin), default permissions minus UPLOAD (no Upload/Uploads/Admin nav, `/auth/me` permissions), `/admin` shows nothing manageable, admin sub-pages show the no-access page, admin/upload/notification APIs answer 403; a wrong Jellyfin password is refused; a local user with no permissions gets 403s, anonymous gets 401.
+- `e2e/uploads.spec.ts`: re-upload of an imported file (copied under another name) is shown as Duplicate with the duplicate banner and nothing new is filed; a file sent as `../../evil.flac` with the title edited to `../../../../etc/passwd` imports under `Radiohead/` with no `..` segment and nothing appears outside the library root; **PLAN 5**: a 130 MB WAV goes through the capped proxy (control: a 101 MB declared body gets 413), the proxy cuts the connection once mid-body, the tus client resumes, the upload is received with the exact byte size, largest request body below 50 MiB, no request refused.
+- `e2e/restart.spec.ts` (**PLAN 8**): the server (NODE_ENV=test) pauses at an import step (`HEARER_TEST_IMPORT_PAUSE_MS` up to 10 min, `HEARER_TEST_IMPORT_PAUSE_AT`, default `state-saved`; honored only under NODE_ENV=test, covered by config tests), is killed with SIGKILL and started again on the same data dir; run for `state-saved` (nothing moved yet) and `moved` (file already in the library, not announced): the same upload ends IMPORTED, exactly one file in the library, no temp leftovers, staging empty, one `upload.imported` webhook, a Jellyfin rescan after the restart.
+- Harness: `mocks/proxy.ts` (streaming reverse proxy, 100 MB cap, one-shot mid-body drop, stats) now fronts the server for the browser and API client (`runtime.baseUrl`; `directUrl` is the server itself); `support/server.ts` + `fixtures.ts` `killServer/startServer/restartServer`; the MusicBrainz mock serves every recording of the fixture release with its own title and length (before, every recording lookup returned "Paranoid Android", which showed up as identical candidates); `support/catalog.ts` (fixture tracks, AcoustID hits, expected library paths); `listFiles`, `probeTags`, `signedInPage`, `api.createUser/syncLibrary/allRequests/waitForRequest`. `smoke.spec.ts` is now `00-smoke.spec.ts` so the wizard runs first on the fresh server.
+
+**Shipped (QA fixes, commit "fix: QA pass ..."):**
+
+- a. `sortCandidates` keeps one candidate per (recording, release), best score first (unit test); `MatchPicker` highlights a single radio even if ids repeat (web test).
+- b. CSP `img-src` adds the origin of `metadata.coverArtBaseUrl`, read per response so a settings change applies at once (server test).
+- c. `main` bottom padding is `6.5rem + env(safe-area-inset-bottom)`, the sticky settings save bar clears the nav plus the safe area, and the request Cancel action keeps its text label on mobile cards (icon only from `md`).
+- d. The shared-limiter test counts turns on the shared limiter instead of comparing network arrival times (spacing is covered with a fake clock in `metadata.ratelimit.test.ts`). `pnpm --filter server test` was run 5x with the verbose reporter: the only failures were that timing test (2 of 5 runs, fixed); no unhandled errors or rejections appeared in any run, so the earlier "non-zero exit with all tests passing" could not be reproduced.
+- e. Route-level code splitting (`lib/lazyPage.tsx`): upload, uploads, batch, review, request queue and detail, admin, users, jobs, account and every settings tab load on demand, and react, tanstack and zod are separate vendor chunks. The main chunk went from 538 kB to 113 kB (largest chunk now 219 kB); the 500 kB warning is gone.
+- f. Final screenshots (dark and light, 1280 and 390) in `scratchpad/final-*.png` were reviewed; `docs/images/requests.webp` was replaced and `review.webp` added to the README. Search and album stay as before because they show real cover art (the mock covers are flat colour).
+
+**Acceptance criteria (PLAN 1-9):** automated now: 2 (Jellyfin and local login, permission matrix, 403 checks in E2E; OIDC is covered by the mock-IdP server tests, not by a real Keycloak), 3 partly (search and badges via fixtures; no timing assertion against live MusicBrainz), 4 partly (approval, webhook and Manual `AWAITING_UPLOAD` in E2E; Lidarr by server fixture tests), 5 (E2E, 130 MB, 100 MB cap proxy, forced disconnect and resume; 300 MB not used to keep the run short, the chunking logic is size independent), 6 partly (AcoustID mock instead of the real service; tagging, MBIDs, cover, template and rescan call verified; "appears in Jellyfin" only against the mock), 7 (duplicate and path traversal in E2E and unit tests), 8 (E2E, two crash points), 1 and 9 in part (wizard through the UI is E2E; CI builds and smoke-tests the amd64 image and the release workflow builds arm64). **Remain manual:** compose up on a clean machine within 5 minutes, arm64 image runtime, a real Jellyfin (ProviderIds key names, rescan behaviour) and a real Keycloak, live AcoustID/MusicBrainz timings, `latest` image existing after the first release.
+
+**Verify:** `pnpm e2e` (twice), `pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm --filter server db:check && pnpm format:check`, actionlint
+
+```text
+pnpm e2e:  10 passed (1.1m)   (run twice, both green)
+packages/shared test:       Tests  17 passed (17)
+apps/web test:       Tests  214 passed (214)
+apps/server test:  Test Files  49 passed | 1 skipped (50)
+apps/server test:       Tests  1260 passed | 4 skipped (1264)
+db:check ok: schema matches 2 committed migration(s)
+All matched files use Prettier code style!
+actionlint ci.yml release.yml: no findings
+```
+
+**Deviations:** DECISIONS.md not amended. The e2e server runs with `NODE_ENV=test` (only the pause hook and static-dir defaults depend on it). Two small additions outside the brief: the test-only import pause hook in `config.ts`/`app.ts`, and the `/admin` index keeps its "nothing to manage" card (sub-pages show the no-access page).
+
+**Next:** first release (merge the release-please PR), then H-23 in the homelab repo.
+
+**Open questions:** the Cover Art Archive URL inside `chosen` tags (shown in the review editor) still points at the real archive rather than the configured mirror; harmless in production, but a mirror-only network would show a broken preview there.

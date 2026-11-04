@@ -360,7 +360,7 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
       ? {
           hook: async (point: string) => {
             const pause = config.testImportPause;
-            if (pause && point === pause.point) {
+            if (pause?.point === point) {
               await new Promise((resolve) => setTimeout(resolve, pause.ms));
             }
           },

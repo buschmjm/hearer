@@ -64,6 +64,10 @@ Putting it on the internet? Read [Reverse proxies](docs/DEPLOY.md#reverse-proxie
 | ---------------------------------------- | ------------------------------------------------ |
 | ![An album page](docs/images/album.webp) | ![The requests queue](docs/images/requests.webp) |
 
+|                                                            Upload review |
+| -----------------------------------------------------------------------: |
+| ![Reviewing an upload: ranked matches and tags](docs/images/review.webp) |
+
 ## Documentation
 
 - [Deploying](docs/DEPLOY.md): docker run and compose, permissions, reverse proxies, Cloudflare Tunnel, Jellyfin, single sign-on, upgrades, troubleshooting
