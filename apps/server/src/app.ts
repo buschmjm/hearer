@@ -49,6 +49,14 @@ import { libraryRoutes } from './routes/library.ts';
 import { AvailabilityMatcher, FuzzyLibraryLookup } from './services/availability.ts';
 import { LibraryService } from './services/library.ts';
 
+// H-11 requests
+import { FulfillmentRegistry } from './adapters/fulfillment/registry.ts';
+import { requestAvailabilityJob } from './jobs/requestAvailability.ts';
+import { requestSubmitJob } from './jobs/requestSubmit.ts';
+import { EventBus } from './lib/events.ts';
+import { requestRoutes } from './routes/requests.ts';
+import { RequestsService } from './services/requests.ts';
+
 export { API_PREFIX };
 const JOB_SHUTDOWN_GRACE_MS = 5_000;
 
@@ -74,6 +82,12 @@ declare module 'fastify' {
       library: LibraryService;
       /** Request availability evaluation against the library index (H-10). */
       availability: AvailabilityMatcher;
+      /** In-process domain events (request.*, upload.*); notifications subscribe here. */
+      events: EventBus;
+      /** Requests: create, approve/decline/retry/cancel, timeline, quotas. */
+      requests: RequestsService;
+      /** Fulfillment provider selection (Manual, Lidarr). */
+      fulfillment: FulfillmentRegistry;
     };
   }
 }
@@ -213,6 +227,22 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
   const library = new LibraryService({ db: database.db, settings, mediaServer });
   // H-10: library.sync job + schedules.
   registerLibrarySync(jobs, library);
+  // H-11: events, requests service and its jobs (`requests.availability` is enqueued by the sync).
+  const availability = new AvailabilityMatcher(database.db, metadata);
+  const events = new EventBus(app.log);
+  const fulfillment = new FulfillmentRegistry(settings);
+  const requests = new RequestsService({
+    db: database.db,
+    settings,
+    metadata,
+    availability,
+    events,
+    jobs,
+    fulfillment,
+    logger: app.log,
+  });
+  jobs.define(requestSubmitJob(requests));
+  jobs.define(requestAvailabilityJob({ requests, availability }));
   app.decorate('hearer', {
     database,
     secrets,
@@ -229,7 +259,10 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
       deps.libraryLookup ?? new FuzzyLibraryLookup(database.db),
     ),
     library,
-    availability: new AvailabilityMatcher(database.db, metadata),
+    availability,
+    events,
+    requests,
+    fulfillment,
   });
   if (deps.startJobs) {
     app.addHook('onReady', () => {
@@ -344,6 +377,9 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
 
   // H-10: library status and manual sync.
   await app.register(libraryRoutes, { prefix: API_PREFIX });
+
+  // H-11: requests API.
+  await app.register(requestRoutes, { prefix: API_PREFIX });
 
   for (const plugin of deps.routes ?? []) {
     await app.register(plugin, { prefix: API_PREFIX });
