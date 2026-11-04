@@ -24,7 +24,10 @@ import { RequestsPage } from './routes/requests.tsx';
 import { requestsSearchSchema } from './lib/requestFilters.ts';
 import { SearchPage } from './routes/search.tsx';
 import { SetupPage } from './routes/setup.tsx';
-import { UploadPage } from './routes/stubs.tsx';
+import { UploadPage } from './routes/upload.tsx';
+import { UploadBatchPage } from './routes/uploadBatch.tsx';
+import { UploadReviewPage } from './routes/uploadReview.tsx';
+import { UploadsPage } from './routes/uploads.tsx';
 import { TrackPage } from './routes/track.tsx';
 // H-20: admin, settings, users, jobs and account pages.
 import { AccountNotificationsPage, AccountPage, ApiKeysPage } from './routes/account.tsx';
@@ -159,6 +162,27 @@ const uploadRoute = createRoute({
   path: '/upload',
   component: UploadPage,
 });
+// --- H-19 uploads routes ---
+const uploadsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/uploads',
+  component: UploadsPage,
+});
+const uploadBatchRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/uploads/batch/$batchId',
+  component: function UploadBatch() {
+    return <UploadBatchPage batchId={uploadBatchRoute.useParams().batchId} />;
+  },
+});
+const uploadReviewRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/uploads/$id',
+  component: function UploadReview() {
+    return <UploadReviewPage id={uploadReviewRoute.useParams().id} />;
+  },
+});
+// --- end H-19 uploads routes ---
 const adminRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/admin',
@@ -223,6 +247,10 @@ const routeTree = rootRoute.addChildren([
     requestsRoute,
     requestDetailRoute,
     uploadRoute,
+    // H-19
+    uploadsRoute,
+    uploadBatchRoute,
+    uploadReviewRoute,
     adminRoute,
     settingsRoute.addChildren([
       settingsIndexRoute,
