@@ -1,14 +1,23 @@
 import { execFile } from 'node:child_process';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
-import { test as base, expect, type Page } from '@playwright/test';
+import {
+  test as base,
+  expect,
+  type Browser,
+  type BrowserContext,
+  type Page,
+} from '@playwright/test';
 import { SUBSCRIBABLE_NOTIFICATION_EVENTS } from '@hearer/shared';
 import type { ReceivedWebhook } from './mocks/index.ts';
-import { readRuntime, type Runtime } from './support/runtime.ts';
+import { readRuntime, reloadRuntime, writeRuntime, type Runtime } from './support/runtime.ts';
+import { spawnServer, stopProcess, waitForHealth } from './support/server.ts';
 
 export { expect };
 export { readRuntime, type Runtime };
+export * from './support/catalog.ts';
+export type { ReceivedWebhook };
 
 const run = promisify(execFile);
 
@@ -19,6 +28,8 @@ const run = promisify(execFile);
 export interface AudioSpec {
   /** Absolute output path; the extension picks the container (`.flac`, `.mp3`, `.ogg`, ...). */
   path: string;
+  /** Extra ffmpeg output arguments (for example `['-ac', '2']`). */
+  extraArgs?: string[];
   /** Tone frequency in Hz. Different tones give different fingerprints and checksums. */
   frequency?: number;
   durationSeconds?: number;
@@ -57,7 +68,7 @@ export async function generateAudio(spec: AudioSpec): Promise<string> {
   for (const [key, value] of Object.entries(spec.tags ?? {})) {
     if (value !== undefined) args.push('-metadata', `${names[key] ?? key}=${String(value)}`);
   }
-  args.push(spec.path);
+  args.push(...(spec.extraArgs ?? []), spec.path);
   await run('ffmpeg', args);
   return spec.path;
 }
@@ -208,9 +219,67 @@ export class HearerApi {
     await this.addWebhookTarget();
   }
 
-  /** Queue a library sync and wait until the index reflects the music directory. */
+  /** Create a local user (needs an admin session). `permissions` defaults to the server default. */
+  async createUser(
+    username: string,
+    password: string,
+    permissions?: number,
+  ): Promise<{ id: string }> {
+    return this.post<{ id: string }>('/users', {
+      username,
+      password,
+      ...(permissions === undefined ? {} : { permissions }),
+    });
+  }
+
+  /** Run a full library sync and wait until the job finished (needs MANAGE_SETTINGS). */
   async syncLibrary(): Promise<void> {
-    await this.post('/library/sync');
+    const { jobId } = await this.post<{ jobId: number }>('/library/sync', { mode: 'full' });
+    await eventually(
+      async () => {
+        const job = await this.get<{ status: string; lastError?: string | null }>(
+          `/jobs/${String(jobId)}`,
+        );
+        if (job.status === 'dead' || job.status === 'failed') {
+          throw new Error(`library.sync ${job.status}: ${job.lastError ?? ''}`);
+        }
+        return job.status === 'succeeded';
+      },
+      { what: 'the library sync job' },
+    );
+  }
+
+  /** Every request, newest first (needs MANAGE_REQUESTS or VIEW_ALL_REQUESTS). */
+  async allRequests(): Promise<
+    {
+      id: string;
+      type: string;
+      title: string;
+      status: string;
+      fulfilledByUploadId: string | null;
+    }[]
+  > {
+    const page = await this.get<{
+      items: {
+        id: string;
+        type: string;
+        title: string;
+        status: string;
+        fulfilledByUploadId: string | null;
+      }[];
+    }>('/requests?all=true&limit=100');
+    return page.items;
+  }
+
+  /** Wait for the request with this title and type to have this status. */
+  async waitForRequest(title: string, type: string, status: string): Promise<void> {
+    await eventually(
+      async () => {
+        const found = (await this.allRequests()).find((r) => r.title === title && r.type === type);
+        return found?.status === status;
+      },
+      { what: `${type} request "${title}" to be ${status}`, timeoutMs: 60_000 },
+    );
   }
 }
 
@@ -244,6 +313,79 @@ export const mocks = {
     });
   },
 };
+
+/** Kill the server process (SIGKILL by default: no graceful shutdown, like a crashed container). */
+export async function killServer({ hard = true } = {}): Promise<void> {
+  await stopProcess(reloadRuntime().serverPid, { hard });
+}
+
+/**
+ * Start the server again on the same port and directories (same DATA_DIR, so the database and
+ * secret key survive). `env` overrides the original server environment for this run only; the
+ * pause hook set for one run is not applied to later restarts.
+ */
+export async function startServer(env: Record<string, string> = {}): Promise<void> {
+  const runtime = reloadRuntime();
+  const pid = spawnServer({ ...runtime.serverEnv, ...env }, runtime.serverLog);
+  writeRuntime({ ...runtime, serverPid: pid });
+  reloadRuntime();
+  await waitForHealth(runtime.directUrl, pid, runtime.serverLog);
+}
+
+export async function restartServer(env: Record<string, string> = {}): Promise<void> {
+  await killServer();
+  await startServer(env);
+}
+
+/** Run an ffprobe on a file and return its tags (lower-cased keys) and duration. */
+export async function probeTags(
+  path: string,
+): Promise<{ tags: Record<string, string>; duration: number }> {
+  const { stdout } = await run('ffprobe', [
+    '-v',
+    'error',
+    '-print_format',
+    'json',
+    '-show_format',
+    path,
+  ]);
+  const format = (
+    JSON.parse(stdout) as { format: { duration: string; tags?: Record<string, string> } }
+  ).format;
+  return {
+    duration: Number(format.duration),
+    tags: Object.fromEntries(
+      Object.entries(format.tags ?? {}).map(([k, v]) => [k.toLowerCase(), v]),
+    ),
+  };
+}
+
+/** Every file under `dir`, relative to it, sorted. */
+export async function listFiles(dir: string): Promise<string[]> {
+  const out: string[] = [];
+  const walk = async (rel: string): Promise<void> => {
+    for (const entry of await readdir(join(dir, rel), { withFileTypes: true })) {
+      const next = rel === '' ? entry.name : `${rel}/${entry.name}`;
+      if (entry.isDirectory()) await walk(next);
+      else out.push(next);
+    }
+  };
+  await walk('');
+  return out.sort();
+}
+
+/** A fresh browser context signed in through the login page. Close the context when done. */
+export async function signedInPage(
+  browser: Browser,
+  runtime: Runtime,
+  username: string,
+  password: string,
+): Promise<{ context: BrowserContext; page: Page }> {
+  const context = await browser.newContext({ baseURL: runtime.baseUrl });
+  const page = await context.newPage();
+  await signInViaUi(page, username, password);
+  return { context, page };
+}
 
 /** Poll until `check` returns a value (not undefined/false), or fail after `timeoutMs`. */
 export async function eventually<T>(

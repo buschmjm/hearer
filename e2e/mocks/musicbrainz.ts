@@ -33,6 +33,33 @@ export interface MusicBrainzMock extends MockService {
 
 const fixture = (name: string): string => readFileSync(join(FIXTURES, `${name}.json`), 'utf8');
 
+interface FixtureTrack {
+  title: string;
+  length: number;
+}
+
+/** Recording id to title and length, from the tracks of the fixture release. */
+const RECORDINGS = new Map<string, FixtureTrack>();
+for (const medium of (
+  JSON.parse(fixture('release')) as {
+    media: { tracks: { recording: { id: string; title: string; length: number } }[] }[];
+  }
+).media) {
+  for (const track of medium.tracks) RECORDINGS.set(track.recording.id, track.recording);
+}
+
+/**
+ * The recording fixture is one recording (Paranoid Android). Every other recording of the
+ * fixture release is served from the same document with its own id, title and length, so
+ * lookups of different tracks stay distinguishable.
+ */
+function recordingBody(id: string): string {
+  const base = JSON.parse(fixture('recording')) as Record<string, unknown>;
+  const own = RECORDINGS.get(id);
+  if (!own) return JSON.stringify(base);
+  return JSON.stringify({ ...base, id, title: own.title, length: own.length });
+}
+
 /** Which fixture answers a WS/2 path, mirroring the endpoints Hearer calls. */
 function fixtureFor(path: string, query: URLSearchParams): string | null {
   const [entity, id] = path.split('/');
@@ -65,7 +92,13 @@ export async function startMusicBrainzMock(coverJpeg: Buffer): Promise<MusicBrai
       return;
     }
     if (url.pathname.startsWith('/ws/2/')) {
-      const name = fixtureFor(url.pathname.slice('/ws/2/'.length), url.searchParams);
+      const path = url.pathname.slice('/ws/2/'.length);
+      const [entity, id] = path.split('/');
+      if (entity === 'recording' && id) {
+        res.writeHead(200, { 'content-type': 'application/json' }).end(recordingBody(id));
+        return;
+      }
+      const name = fixtureFor(path, url.searchParams);
       if (name) {
         res.writeHead(200, { 'content-type': 'application/json' }).end(fixture(name));
         return;

@@ -355,6 +355,17 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
     jobs,
     log: app.log,
     version,
+    // E2E crash test only (NODE_ENV=test): pause at one import step so the process can be killed.
+    ...(config.testImportPause
+      ? {
+          hook: async (point: string) => {
+            const pause = config.testImportPause;
+            if (pause && point === pause.point) {
+              await new Promise((resolve) => setTimeout(resolve, pause.ms));
+            }
+          },
+        }
+      : {}),
     ...deps.uploadImport,
   });
   app.decorate('hearer', {
