@@ -34,6 +34,9 @@ import { authRoutes } from './routes/auth.ts';
 import { jellyfinAuthRoutes } from './auth/jellyfin.ts';
 import { MediaServerRegistry } from './adapters/mediaserver/registry.ts';
 import { oidcRoutes } from './routes/oidc.ts';
+// H-16: web app + security headers
+import { authMethodsRoutes } from './routes/methods.ts';
+import { registerSecurityHeaders, registerWebApp, resolveStaticDir } from './static.ts';
 import { healthRoutes, type HealthDeps } from './routes/health.ts';
 import { settingsRoutes } from './routes/settings.ts';
 import { registerSetupGate, setupRoutes } from './routes/setup.ts';
@@ -283,7 +286,12 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
       .status(status)
       .send({ error: { code, message, ...(details === undefined ? {} : { details }) } });
 
+  // H-16: set when the built web app is served; renders index.html for unknown browser paths.
+  let spaFallback: Awaited<ReturnType<typeof registerWebApp>> | undefined;
+
   app.setNotFoundHandler((request, reply) => {
+    const page = spaFallback?.(request, reply);
+    if (page) return page;
     if (request.url.startsWith(API_PREFIX) || request.url === '/api') {
       return sendError(reply, 404, 'not_found', `Route ${request.method} ${request.url} not found`);
     }
@@ -311,6 +319,11 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
     }
     return sendError(reply, status, code, message, details);
   });
+
+  // H-16: security headers on every response, then the web app when a build is available.
+  await registerSecurityHeaders(app);
+  const staticDir = resolveStaticDir(config);
+  if (staticDir) spaFallback = await registerWebApp(app, staticDir);
 
   await registerAuth(app, {
     config,
@@ -347,6 +360,8 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
   );
 
   await app.register(authRoutes, { prefix: API_PREFIX });
+  // H-16: public sign-in options for the login page
+  await app.register(authMethodsRoutes, { prefix: API_PREFIX });
   // H-07: Jellyfin sign-in
   await app.register(jellyfinAuthRoutes, { prefix: API_PREFIX });
   await app.register(setupRoutes(config), { prefix: API_PREFIX });

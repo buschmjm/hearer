@@ -24,6 +24,7 @@ const envSchema = z.object({
   DATA_DIR: z.string().min(1).default('/data'),
   MUSIC_DIR: z.string().min(1).default('/music'),
   STAGING_DIR: z.string().min(1).default('/staging'),
+  STATIC_DIR: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   LOG_FORMAT: z.enum(['json', 'pretty']).default('json'),
   HEARER_SECRET: z.preprocess(emptyToUndefined, z.string().min(16).optional()),
@@ -39,6 +40,8 @@ export interface Config {
   dataDir: string;
   musicDir: string;
   stagingDir: string;
+  /** Built web app. Undefined means "use the default location if it exists" (see static.ts). */
+  staticDir: string | undefined;
   logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
   logFormat: 'json' | 'pretty';
   /** Optional; when absent a secret is generated into DATA_DIR later. */
@@ -75,6 +78,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     dataDir: e.DATA_DIR,
     musicDir: e.MUSIC_DIR,
     stagingDir: e.STAGING_DIR,
+    staticDir: e.STATIC_DIR,
     logLevel: e.LOG_LEVEL,
     logFormat: e.LOG_FORMAT,
     secret: e.HEARER_SECRET,
