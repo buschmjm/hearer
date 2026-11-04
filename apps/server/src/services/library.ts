@@ -10,6 +10,15 @@ import { normKey, normalizeArtist } from '../lib/normalize.ts';
 export type SyncMode = 'incremental' | 'full';
 
 /**
+ * `server_item_id` prefix of the provisional rows the upload import (H-15) writes so badges and
+ * request availability update before the media server has scanned the new file. A sync never
+ * sweeps them as "not seen"; it removes one once a real item has the same path or recording id,
+ * or after `PROVISIONAL_MAX_AGE_MS` when the file never showed up.
+ */
+export const PROVISIONAL_ID_PREFIX = 'hearer-upload:';
+export const PROVISIONAL_MAX_AGE_MS = 7 * 24 * 3_600_000;
+
+/**
  * Sync state lives in the `settings` table under an internal key. It is deliberately NOT part of
  * the shared settings catalog: the settings API only serves catalog keys, so it can neither be
  * read nor overwritten from the UI. No schema change is needed.
@@ -257,7 +266,9 @@ export class LibraryService {
         } else {
           removed = this.#db
             .delete(libraryItems)
-            .where(sql`${libraryItems.syncedAt} < ${startedAt}`)
+            .where(
+              sql`${libraryItems.syncedAt} < ${startedAt} and ${libraryItems.serverItemId} not like ${`${PROVISIONAL_ID_PREFIX}%`}`,
+            )
             .run().changes;
         }
       }
@@ -271,6 +282,7 @@ export class LibraryService {
       throw err;
     }
 
+    this.#reapProvisional(startedAt);
     this.#saveState({
       lastIncrementalAt: startedAt,
       ...(mode === 'full' ? { lastFullAt: startedAt } : {}),
@@ -281,6 +293,28 @@ export class LibraryService {
     });
     log?.info({ mode, seen, upserted, removed }, 'library sync finished');
     return { mode, seen, upserted, removed, ...(sweepSkipped ? { sweepSkipped } : {}) };
+  }
+
+  /** Drop provisional upload rows that a real item has replaced (or that never got indexed). */
+  #reapProvisional(now: number): number {
+    const like = `${PROVISIONAL_ID_PREFIX}%`;
+    const staleBefore = now - PROVISIONAL_MAX_AGE_MS;
+    return this.#db.run(sql`
+      delete from library_items
+      where server_item_id like ${like}
+        and (
+          synced_at < ${staleBefore}
+          or exists (
+            select 1 from library_items r
+            where r.server_item_id not like ${like}
+              and r.kind = 'track'
+              and (
+                (r.path is not null and r.path = library_items.path)
+                or (r.mb_recording_id is not null
+                    and r.mb_recording_id = library_items.mb_recording_id)
+              )
+          )
+        )`).changes;
   }
 
   #upsert(rows: Row[]): number {

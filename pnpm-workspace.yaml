@@ -23,6 +23,7 @@ catalog:
   nodemailer: 10.3.1
   smtp-server: 3.21.3
   '@types/smtp-server': 3.5.13
+  node-taglib-sharp: 6.0.3
   openid-client: 6.8.9
   fastify-type-provider-zod: 7.0.0
   pino: 10.4.0

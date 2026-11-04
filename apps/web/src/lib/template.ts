@@ -3,7 +3,8 @@
  *
  * Syntax (matches the server default): `{name}` inserts a value, `{name:02}` zero-pads to a width,
  * and `{disc:?}` inserts "<disc>-" only for multi-disc releases. The preview is an approximation
- * for the wizard; the import batch owns the real renderer and sanitisation.
+ * for the wizard; the server (`apps/server/src/lib/pathTemplate.ts`) owns the real renderer and
+ * sanitisation, and `@hearer/shared` (`validateNamingTemplate`) the validation applied on save.
  */
 export const TEMPLATE_VARIABLES = {
   artist: 'Track artist',
@@ -14,6 +15,15 @@ export const TEMPLATE_VARIABLES = {
   track: 'Track number',
   title: 'Track title',
   ext: 'File extension',
+  genre: 'Genre',
+  date: 'Release date (YYYY-MM-DD)',
+  mbrecording: 'MusicBrainz recording id',
+  mbtrack: 'MusicBrainz track id',
+  mbrelease: 'MusicBrainz release id',
+  mbreleasegroup: 'MusicBrainz release group id',
+  mbartist: 'MusicBrainz artist id',
+  mbalbumartist: 'MusicBrainz album artist id',
+  acoustid: 'AcoustID id',
 } as const;
 
 export type TemplateVariable = keyof typeof TEMPLATE_VARIABLES;
@@ -28,6 +38,15 @@ export interface TemplateSample {
   track: number;
   title: string;
   ext: string;
+  genre: string;
+  date: string;
+  mbrecording: string;
+  mbtrack: string;
+  mbrelease: string;
+  mbreleasegroup: string;
+  mbartist: string;
+  mbalbumartist: string;
+  acoustid: string;
 }
 
 export const SAMPLE_ALBUM_TRACK: TemplateSample = {
@@ -40,6 +59,15 @@ export const SAMPLE_ALBUM_TRACK: TemplateSample = {
   track: 2,
   title: 'Paranoid Android',
   ext: 'flac',
+  genre: 'Alternative Rock',
+  date: '1997-05-21',
+  mbrecording: '9f9cf187-d6f9-437f-9d98-d59cdbd52757',
+  mbtrack: '',
+  mbrelease: '1834eae1-741b-3c03-9ca5-0df3decb43ea',
+  mbreleasegroup: 'b1392450-e666-3926-a536-22c65f834433',
+  mbartist: 'a74b1b7f-71a5-4011-9441-d0b5e4122711',
+  mbalbumartist: 'a74b1b7f-71a5-4011-9441-d0b5e4122711',
+  acoustid: '',
 };
 
 const TOKEN = /\{(\w+)(?::([^}]*))?\}/g;
@@ -56,7 +84,11 @@ export function validateTemplate(template: string): string[] {
   for (const match of template.matchAll(TOKEN)) {
     const [, name = '', spec] = match;
     if (!isVariable(name)) problems.push(`Unknown variable {${name}}`);
-    else if (spec !== undefined && spec !== '?' && !/^0?\d{1,2}$/.test(spec)) {
+    else if (
+      spec !== undefined &&
+      !(spec === '?' && name === 'disc') &&
+      !((name === 'disc' || name === 'track') && /^0?[1-9]$/.test(spec))
+    ) {
       problems.push(`Bad format "${spec}" in {${name}:${spec}}`);
     }
   }
