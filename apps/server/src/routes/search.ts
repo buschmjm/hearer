@@ -21,6 +21,25 @@ export const SEARCH_RATE_LIMIT_PER_MINUTE = 60;
 
 const mbidParams = z.object({ mbid: mbidSchema });
 
+// Name hints for fuzzy library matching ('possible' badges), keyed by MusicBrainz id.
+interface Named {
+  mbid: string;
+  artistName: string;
+  artistCredit: { name: string }[];
+}
+const artistSpellings = (item: Named): string[] => [
+  ...new Set([item.artistName, ...item.artistCredit.map((c) => c.name)]),
+];
+const albumHints = (items: readonly (Named & { title: string })[]) =>
+  new Map(items.map((i) => [i.mbid, { artists: artistSpellings(i), title: i.title }]));
+const trackHints = (items: readonly (Named & { title: string; lengthMs: number | null })[]) =>
+  new Map(
+    items.map((i) => [
+      i.mbid,
+      { artists: artistSpellings(i), title: i.title, durationMs: i.lengthMs },
+    ]),
+  );
+
 /** Translate metadata failures into the API error envelope. */
 async function guarded<T>(work: Promise<T>): Promise<T> {
   try {
@@ -86,7 +105,10 @@ export function searchRoutes(options: { rateLimitMax?: number } = {}): FastifyPl
         const signal = clientGone(request);
         if (type === 'artist') {
           const result = await guarded(metadata.searchArtists(q, page, signal));
-          const lookup = badges.resolve({ artists: result.items.map((i) => i.mbid) });
+          const lookup = badges.resolve({
+            artists: result.items.map((i) => i.mbid),
+            hints: { artists: new Map(result.items.map((i) => [i.mbid, { name: i.name }])) },
+          });
           return {
             ...result,
             type,
@@ -95,7 +117,10 @@ export function searchRoutes(options: { rateLimitMax?: number } = {}): FastifyPl
         }
         if (type === 'album') {
           const result = await guarded(metadata.searchReleaseGroups(q, page, signal));
-          const lookup = badges.resolve({ albums: result.items.map((i) => i.mbid) });
+          const lookup = badges.resolve({
+            albums: result.items.map((i) => i.mbid),
+            hints: { albums: albumHints(result.items) },
+          });
           return {
             ...result,
             type,
@@ -103,7 +128,10 @@ export function searchRoutes(options: { rateLimitMax?: number } = {}): FastifyPl
           };
         }
         const result = await guarded(metadata.searchRecordings(q, page, signal));
-        const lookup = badges.resolve({ tracks: result.items.map((i) => i.mbid) });
+        const lookup = badges.resolve({
+          tracks: result.items.map((i) => i.mbid),
+          hints: { tracks: trackHints(result.items) },
+        });
         return {
           ...result,
           type,
@@ -126,7 +154,11 @@ export function searchRoutes(options: { rateLimitMax?: number } = {}): FastifyPl
       async (request) => {
         const { mbid } = request.params;
         const artist = await guarded(metadata.getArtist(mbid, clientGone(request)));
-        return { ...artist, ...badges.resolve({ artists: [mbid] }).artist(mbid) };
+        const lookup = badges.resolve({
+          artists: [mbid],
+          hints: { artists: new Map([[mbid, { name: artist.name }]]) },
+        });
+        return { ...artist, ...lookup.artist(mbid) };
       },
     );
 
@@ -151,7 +183,10 @@ export function searchRoutes(options: { rateLimitMax?: number } = {}): FastifyPl
             clientGone(request),
           ),
         );
-        const lookup = badges.resolve({ albums: result.items.map((i) => i.mbid) });
+        const lookup = badges.resolve({
+          albums: result.items.map((i) => i.mbid),
+          hints: { albums: albumHints(result.items) },
+        });
         return { ...result, items: result.items.map((i) => ({ ...i, ...lookup.album(i.mbid) })) };
       },
     );
@@ -170,7 +205,11 @@ export function searchRoutes(options: { rateLimitMax?: number } = {}): FastifyPl
       async (request) => {
         const { mbid } = request.params;
         const album = await guarded(metadata.getReleaseGroup(mbid, clientGone(request)));
-        const lookup = badges.resolve({ albums: [mbid], tracks: album.tracks.map((t) => t.mbid) });
+        const lookup = badges.resolve({
+          albums: [mbid],
+          tracks: album.tracks.map((t) => t.mbid),
+          hints: { albums: albumHints([album]), tracks: trackHints(album.tracks) },
+        });
         return {
           ...album,
           ...lookup.album(mbid),
@@ -196,6 +235,7 @@ export function searchRoutes(options: { rateLimitMax?: number } = {}): FastifyPl
         const lookup = badges.resolve({
           tracks: [mbid],
           albums: track.releaseGroups.map((rg) => rg.mbid),
+          hints: { tracks: trackHints([track]), albums: albumHints(track.releaseGroups) },
         });
         return {
           ...track,

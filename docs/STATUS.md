@@ -391,3 +391,27 @@ The mock IdP (`test/helpers/mock-idp.ts`) is a real node:http server on port 0 w
 **Next:** H-10 (implement a fuzzy `LibraryLookup` and pass it as `AppDeps.libraryLookup`).
 
 **Open questions / notes for H-16:** the CSP `img-src` must allow `https://coverartarchive.org` and `https://*.archive.org` (the archive answers 307 to archive.org), and covers can 404, so the UI needs an `onerror` fallback. Cover URLs are the 250 px variant; swap `front-250` for `front-500`/`front-1200` for larger renders. Release groups with more than 100 releases only consider the first 100 for the representative-release choice.
+
+## H-10 — Library index sync + availability matcher
+
+**Status:** done
+
+**Shipped:**
+
+- `lib/normalize.ts`: `normalizeTitle`, `normalizeArtist`, `normKey` (rules and the noise vs meaningful suffix lists in the file header and `docs/MATCHING.md`). 80+ table tests incl. CJK, Cyrillic, Hangul, dakuten, empty/symbol-only input.
+- `services/library.ts` (`LibraryService`): `sync('incremental'|'full')` over `iterateLibrary`, upsert by `server_item_id` in transactions of 500, mark-and-sweep delete on `synced_at` only after a fully successful full run (also skipped when the server returned nothing while the index is not empty), sync state in the `settings` table under the internal key `library.syncState` (not in the shared catalog, so the settings API cannot touch it; no schema change). `status()`, `toLocalPath`/`toServerPath` (pure functions plus service methods).
+- `jobs/librarySync.ts`: job `library.sync` `{mode}`, concurrency 1, 3 attempts; auth/not-configured errors are permanent; schedules incremental every 15 min and full daily at 03:00, registered unconditionally (the handler is a no-op with a debug log while no media server is set, because settings change at runtime); enqueues `requests.availability` after success only if that type is registered.
+- `jobs/scheduler.ts` (H-04): `ScheduleSpec.key` so one job type can carry several schedules (`schedule:<type>:<key>` unique key); unchanged when `key` is omitted.
+- `services/availability.ts`: `FuzzyLibraryLookup` (default `libraryLookup`; same interface, fixed queries per page), `AvailabilityMatcher.evaluateRequest(request, run?)` for track/album/artist and `AvailabilityRun` (per-run memoization of MusicBrainz calls). `services/badges.ts`: `CatalogIds.hints` (optional name hints); `routes/search.ts` passes hints from the catalog items it holds.
+- `routes/library.ts`: `GET /api/v1/library/status`, `POST /api/v1/library/sync {mode}` (202, unique key per mode, 409 when no media server), both MANAGE_SETTINGS. `app.hearer.library` and `app.hearer.availability` exposed.
+- Shared: `mediaServer.pathMappings: [{serverPath, localPath}]` (default `[]`).
+- `docs/MATCHING.md` documents the index, path mapping, normalization and all matching rules.
+- Tests: `library.normalize`, `library.sync` (fake and Jellyfin-mock servers, partial failure, batching, scheduler, job, path mapping), `library.match` (lookup incl. the 3.0/3.1 s boundary, evaluateRequest for all kinds, `/search` badge, admin routes). The H-09 test that bounded library queries per album page now allows 4 (exact + fuzzy per kind).
+
+**Verify:** `pnpm --filter server test -- library`, then `pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm --filter server db:check && pnpm format:check` (see the handback report for the output).
+
+**Deviations:** no schema change; DECISIONS.md not amended. `evaluateRequest` returns an extra `possible` list. More than 8 files (three test files, docs, route).
+
+**Next:** H-11 should define `requests.availability` (payload `{}` is enqueued with `uniqueKey: 'requests.availability'` after each sync), create one `matcher.newRun()` per pass, and call `app.hearer.availability.evaluateRequest`. H-15 uses `app.hearer.library.toServerPath` for `notifyPathsChanged`. H-13/H-14 can use `normKey` for duplicate checks.
+
+**Open questions:** (1) Server-vs-local paths: resolved by `mediaServer.pathMappings`; there is no UI for it yet (H-16 settings). (2) Incremental sync cannot see deletions; the nightly full sweep removes them. (3) Only the first credited artist of a Jellyfin track is indexed, so tracks credited to a duo only match when the MusicBrainz credit also yields that first name (the matcher tries every credit spelling).

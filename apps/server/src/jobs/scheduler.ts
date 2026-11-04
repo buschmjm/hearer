@@ -2,7 +2,15 @@
  * Recurring jobs. Each schedule enqueues its job under the unique key `schedule:<type>`, so a
  * slow job never piles up copies: while one is queued or running, further ticks are no-ops.
  */
-export type ScheduleSpec = { type: string; payload?: unknown } & (
+export type ScheduleSpec = {
+  type: string;
+  payload?: unknown;
+  /**
+   * Distinguishes several schedules of one job type (e.g. an incremental and a nightly full
+   * sync). The unique key becomes `schedule:<type>:<key>`; without it, `schedule:<type>`.
+   */
+  key?: string;
+} & (
   | {
       /** Interval in ms. Enqueued once at start, then on every interval. */
       every: number;
@@ -19,8 +27,8 @@ export interface SchedulerOptions {
   onError: (err: unknown, spec: ScheduleSpec) => void;
 }
 
-export function scheduleKey(spec: Pick<ScheduleSpec, 'type'>): string {
-  return `schedule:${spec.type}`;
+export function scheduleKey(spec: Pick<ScheduleSpec, 'type' | 'key'>): string {
+  return spec.key === undefined ? `schedule:${spec.type}` : `schedule:${spec.type}:${spec.key}`;
 }
 
 /** Next local-time occurrence of `hour:00` strictly after `after` (ms). */
@@ -51,8 +59,8 @@ export class Scheduler {
     ) {
       throw new RangeError(`schedule ${spec.type}: dailyAtHour must be an integer 0-23`);
     }
-    if (this.#specs.some((s) => s.type === spec.type)) {
-      throw new Error(`schedule already exists for ${spec.type}`);
+    if (this.#specs.some((s) => scheduleKey(s) === scheduleKey(spec))) {
+      throw new Error(`schedule already exists for ${scheduleKey(spec)}`);
     }
     this.#specs.push(spec);
     if (this.#running) this.#arm(spec, true);
