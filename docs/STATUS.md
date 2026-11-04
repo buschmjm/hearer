@@ -303,3 +303,37 @@ Smoke (`pnpm --filter server build`, temp `DATA_DIR`, `node dist/index.js`, curl
 **Next:** H-07 (Jellyfin login: use `users.findOrCreateExternalUser('jellyfin', ...)`, `auth.startSession(request, reply, userId)` and `app.hearer.settings`). Later route batches add `onRequest: [requirePermission(...)]` and must extend the matrix allowlists only when a route is truly public.
 
 **Open questions:** `PUT /settings/:key` is full-replace; the web settings UI must send the whole section (masked secrets echoed back). Also, with `auth.localEnabled=false` and no other provider enabled the API refuses the change, but an operator who disables local auth and later loses the external provider must recover through the database.
+
+## H-09 — MusicBrainz + Cover Art Archive client, rate limiter, cache, search API
+
+**Status:** done
+
+**Shipped:**
+
+- `lib/ratelimit.ts`: `RateLimiter` (FIFO serial release, at most one caller per `intervalMs`, `AbortSignal`, `penalize(ms)` for Retry-After, injectable clock), `getMusicBrainzLimiter()` process-global singleton at 1 request/second, `parseRetryAfter`.
+- `adapters/metadata/types.ts`: `MetadataProvider` (searchArtists/ReleaseGroups/Recordings, getArtist, getArtistReleaseGroups, getReleaseGroup, getRelease, getRecording), `MetadataError`. DTO zod schemas live in `packages/shared/src/dto/catalog.ts` (summaries, details, pages, queries, badges, `mbidSchema`).
+- `adapters/metadata/musicbrainz.ts`: WS/2 JSON client. Base URL from `metadata.musicBrainzBaseUrl` (read per request, so mirrors apply live), UA from shared `userAgent()`. Lucene escaping (`escapeLucene`; operators quoted), field-scoped queries (`releasegroup:(t) OR artist:(t)`, `artist:(t) OR alias:(t)`, `recording:(t) OR artist:(t)`). Every call: `mb_cache` lookup (key = normalised URL, sorted params), single-flight coalescing (refcounted, a flight is dropped when its last waiter aborts), global limiter, 503/429 retry (bounded, `Retry-After` or exponential backoff, capped at 60 s, penalises the shared limiter so other callers wait too), stale-while-error (stale row served and logged on 5xx/network failure; never for 404). Responses are validated with lenient zod schemas before they are cached.
+- Representative release (`pickRepresentativeRelease`, documented in code): Official only, then Digital Media/CD-only releases, then most common total track count (tie goes to the earliest release's count), then earliest date (full date before a bare year, undated last), then release id. A release group costs 3 cached calls (lookup, release browse with `inc=media` limit 100, release with `inc=recordings+artist-credits+isrcs`).
+- Recordings: the "home" release group is the studio album (primary Album, no secondary types) with the earliest date, not whatever MusicBrainz lists first (live bootlegs often come first).
+- `adapters/metadata/coverart.ts`: deterministic `coverArtUrl()` (no network during search), `fetchFrontCover(mbid, size, opts)` for H-15 (redirects, 15 MB cap declared and streamed, JPEG/PNG only, timeout, abort, own 250 ms limiter; 404 gives null).
+- `services/badges.ts`: `LibraryLookup` interface + `MbidLibraryLookup` (exact MBID, one query per kind) and `lookupRequests` (latest non-cancelled per type+mbid, one query per page); `BadgeService` combines them. `AppDeps.libraryLookup` is the H-10 seam.
+- `routes/search.ts` (all `requireAuth`, `@fastify/rate-limit` 60/min keyed by user id, falling back to IP): `GET /search?q&type=artist|album|track&offset&limit`, `/artists/:mbid`, `/artists/:mbid/albums?type&offset&limit`, `/albums/:mbid`, `/tracks/:mbid`. Limit at most 50, offset at most 10000, MBIDs validated and lower-cased. MusicBrainz 404 gives 404, unavailable gives 502 `metadata_unavailable`.
+- Fixtures in `test/fixtures/musicbrainz/` are trimmed real responses (Radiohead / OK Computer) fetched once at 1 request per 1.5 s; tests serve them from a local HTTP server (`test/helpers/mbServer.ts`), never the network.
+- Settings: `metadata.cacheTtlDays` replaced by `metadata.cacheTtl {entityDays: 7, searchDays: 1}` (nothing else used the old field).
+- `app.ts`: small block registering the metadata provider (`AppDeps.metadata`, `metadataOptions`, `libraryLookup`, `searchRateLimitMax` for tests) and the search routes. The route matrix allowlist gained the five new routes as authenticated-only.
+
+**Verify:** `pnpm --filter server test -- metadata`, then `pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm --filter server db:check && pnpm format:check`
+
+```text
+apps/server test:  Test Files  18 passed (18)
+apps/server test:       Tests  296 passed (296)
+db:check ok: schema matches 1 committed migration(s)
+Checking formatting...
+All matched files use Prettier code style!
+```
+
+**Deviations:** No cover image proxy route (optional in the brief); the UI uses Cover Art Archive URLs directly. DECISIONS.md not amended.
+
+**Next:** H-10 (implement a fuzzy `LibraryLookup` and pass it as `AppDeps.libraryLookup`).
+
+**Open questions / notes for H-16:** the CSP `img-src` must allow `https://coverartarchive.org` and `https://*.archive.org` (the archive answers 307 to archive.org), and covers can 404, so the UI needs an `onerror` fallback. Cover URLs are the 250 px variant; swap `front-250` for `front-500`/`front-1200` for larger renders. Release groups with more than 100 releases only consider the first 100 for the representative-release choice.

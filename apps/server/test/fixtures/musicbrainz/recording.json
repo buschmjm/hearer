@@ -1,0 +1,131 @@
+{
+  "releases": [
+    {
+      "title": "OK Computer",
+      "date": "1997-05-21",
+      "release-group": {
+        "id": "b1392450-e666-3926-a536-22c65f834433",
+        "artist-credit": [
+          {
+            "name": "Radiohead",
+            "artist": {
+              "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+              "name": "Radiohead",
+              "type": "Group"
+            },
+            "joinphrase": ""
+          }
+        ],
+        "secondary-types": [],
+        "secondary-type-ids": [],
+        "first-release-date": "1997-05-21",
+        "releases": [],
+        "primary-type": "Album",
+        "title": "OK Computer"
+      },
+      "artist-credit": [
+        {
+          "name": "Radiohead",
+          "artist": {
+            "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+            "type": "Group",
+            "name": "Radiohead"
+          },
+          "joinphrase": ""
+        }
+      ],
+      "status": "Official",
+      "id": "1834eae1-741b-3c03-9ca5-0df3decb43ea"
+    },
+    {
+      "status": "Official",
+      "id": "3a6b3e7e-cfed-4c4a-b656-701fe3457cd1",
+      "title": "Paranoid Android",
+      "date": "1997-05-26",
+      "release-group": {
+        "secondary-types": [],
+        "secondary-type-ids": [],
+        "first-release-date": "1997-05-26",
+        "artist-credit": [
+          {
+            "name": "Radiohead",
+            "artist": {
+              "type": "Group",
+              "name": "Radiohead",
+              "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711"
+            },
+            "joinphrase": ""
+          }
+        ],
+        "id": "1f4d4fe7-ddb0-36b8-8fd9-283d40190c3b",
+        "title": "Paranoid Android",
+        "releases": [],
+        "primary-type": "Single"
+      },
+      "artist-credit": [
+        {
+          "joinphrase": "",
+          "artist": {
+            "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+            "type": "Group",
+            "name": "Radiohead"
+          },
+          "name": "Radiohead"
+        }
+      ]
+    },
+    {
+      "id": "e4933069-51f2-4b4e-a987-8d9de6802b77",
+      "status": "Official",
+      "artist-credit": [
+        {
+          "artist": {
+            "type": "Group",
+            "name": "Radiohead",
+            "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711"
+          },
+          "joinphrase": "",
+          "name": "Radiohead"
+        }
+      ],
+      "date": "1997-05-26",
+      "title": "Paranoid Android",
+      "release-group": {
+        "id": "1f4d4fe7-ddb0-36b8-8fd9-283d40190c3b",
+        "artist-credit": [
+          {
+            "joinphrase": "",
+            "artist": {
+              "type": "Group",
+              "name": "Radiohead",
+              "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711"
+            },
+            "name": "Radiohead"
+          }
+        ],
+        "secondary-types": [],
+        "secondary-type-ids": [],
+        "first-release-date": "1997-05-26",
+        "releases": [],
+        "primary-type": "Single",
+        "title": "Paranoid Android"
+      }
+    }
+  ],
+  "isrcs": ["GBAYE9701376", "GBBKS1700108"],
+  "title": "Paranoid Android",
+  "id": "9f9cf187-d6f9-437f-9d98-d59cdbd52757",
+  "artist-credit": [
+    {
+      "artist": {
+        "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+        "name": "Radiohead",
+        "type": "Group"
+      },
+      "joinphrase": "",
+      "name": "Radiohead"
+    }
+  ],
+  "length": 384000,
+  "first-release-date": "1997-05-21"
+}
