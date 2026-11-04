@@ -17,14 +17,22 @@ import { safeReturnTo } from './lib/returnTo.ts';
 import { HomePage } from './routes/home.tsx';
 import { LoginPage } from './routes/login.tsx';
 import { SetupPage } from './routes/setup.tsx';
+import { RequestsPage, SearchPage, UploadPage } from './routes/stubs.tsx';
+// H-20: admin, settings, users, jobs and account pages.
+import { AccountNotificationsPage, AccountPage, ApiKeysPage } from './routes/account.tsx';
+import { AdminPage } from './routes/admin.tsx';
+import { JobsPage } from './routes/jobs.tsx';
 import {
-  AccountPage,
-  AdminPage,
-  ApiKeysPage,
-  RequestsPage,
-  SearchPage,
-  UploadPage,
-} from './routes/stubs.tsx';
+  AuthSettingsPage,
+  FulfillmentSettingsPage,
+  GeneralSettingsPage,
+  LibrarySettingsPage,
+  MediaServerSettingsPage,
+  MetadataSettingsPage,
+  NotificationsSettingsPage,
+  SettingsLayout,
+} from './routes/settings.tsx';
+import { UsersPage } from './routes/users.tsx';
 
 /*
  * Routes are declared in code (no generated route tree). To add a page: create a component under
@@ -111,10 +119,46 @@ const adminRoute = createRoute({
   path: '/admin',
   component: AdminPage,
 });
+const settingsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/admin/settings',
+  component: SettingsLayout,
+});
+const settingsIndexRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: '/',
+  beforeLoad: () => {
+    throw redirect({ to: '/admin/settings/general' });
+  },
+});
+const settingsTab = <P extends string>(path: P, component: () => React.JSX.Element) =>
+  createRoute({ getParentRoute: () => settingsRoute, path, component });
+const settingsGeneralRoute = settingsTab('/general', GeneralSettingsPage);
+const settingsAuthRoute = settingsTab('/auth', AuthSettingsPage);
+const settingsMediaRoute = settingsTab('/media-server', MediaServerSettingsPage);
+const settingsLibraryRoute = settingsTab('/library', LibrarySettingsPage);
+const settingsMetadataRoute = settingsTab('/metadata', MetadataSettingsPage);
+const settingsFulfillmentRoute = settingsTab('/fulfillment', FulfillmentSettingsPage);
+const settingsNotificationsRoute = settingsTab('/notifications', NotificationsSettingsPage);
+const usersRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/admin/users',
+  component: UsersPage,
+});
+const jobsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/admin/jobs',
+  component: JobsPage,
+});
 const accountRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/account',
   component: AccountPage,
+});
+const accountNotificationsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/account/notifications',
+  component: AccountNotificationsPage,
 });
 const apiKeysRoute = createRoute({
   getParentRoute: () => appRoute,
@@ -131,7 +175,20 @@ const routeTree = rootRoute.addChildren([
     requestsRoute,
     uploadRoute,
     adminRoute,
+    settingsRoute.addChildren([
+      settingsIndexRoute,
+      settingsGeneralRoute,
+      settingsAuthRoute,
+      settingsMediaRoute,
+      settingsLibraryRoute,
+      settingsMetadataRoute,
+      settingsFulfillmentRoute,
+      settingsNotificationsRoute,
+    ]),
+    usersRoute,
+    jobsRoute,
     accountRoute,
+    accountNotificationsRoute,
     apiKeysRoute,
   ]),
 ]);

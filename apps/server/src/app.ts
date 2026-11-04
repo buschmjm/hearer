@@ -81,6 +81,7 @@ import { RequestsService } from './services/requests.ts';
 // H-21 notifications
 import { notifySendJob } from './jobs/notifySend.ts';
 import { notificationRoutes } from './routes/notifications.ts';
+import { jobRoutes } from './routes/jobs.ts';
 import { NotificationService } from './services/notifications.ts';
 
 export { API_PREFIX };
@@ -523,6 +524,9 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
 
   // H-21: notification targets and per-user preferences.
   await app.register(notificationRoutes, { prefix: API_PREFIX });
+
+  // H-20: jobs administration.
+  await app.register(jobRoutes, { prefix: API_PREFIX });
 
   for (const plugin of deps.routes ?? []) {
     await app.register(plugin, { prefix: API_PREFIX });

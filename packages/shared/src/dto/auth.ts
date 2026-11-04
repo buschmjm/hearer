@@ -26,6 +26,16 @@ export const meResponseSchema = z.object({
 });
 export type MeResponse = z.infer<typeof meResponseSchema>;
 
+/** Edit your own profile (local accounts; external accounts take their profile from the provider). */
+export const updateProfileRequestSchema = z
+  .object({
+    email: z.email().max(254).nullable(),
+    displayName: z.string().trim().min(1).max(100).nullable(),
+  })
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, 'at least one field is required');
+export type UpdateProfileRequest = z.infer<typeof updateProfileRequestSchema>;
+
 export const changePasswordRequestSchema = z.object({
   currentPassword: z.string().min(1).max(1024),
   newPassword: passwordSchema,

@@ -189,6 +189,16 @@ export class JobRunner {
     return this;
   }
 
+  /** Registered recurring jobs and when each fires next (null while the runner is stopped). */
+  schedules(): { key: string; type: string; nextRunAt: number | null; everyMs: number | null }[] {
+    return this.#scheduler.list().map(({ spec, key, nextRunAt }) => ({
+      key,
+      type: spec.type,
+      nextRunAt,
+      everyMs: 'every' in spec ? spec.every : null,
+    }));
+  }
+
   /**
    * Validate the payload and insert a job; returns its id. With a `uniqueKey` that is already
    * queued or running, nothing is inserted and the existing id is returned.
