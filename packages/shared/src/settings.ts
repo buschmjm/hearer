@@ -39,8 +39,33 @@ const auth = z.object({
       scopes: z.string().default('openid profile email'),
       buttonLabel: z.string().max(60).default('Sign in with SSO'),
       autoCreateUsers: z.boolean().default(true),
-      usernameClaim: z.string().default('preferred_username'),
-      emailClaim: z.string().default('email'),
+      /** Claim used as the Hearer username on first login (falls back to the email, then `sub`). */
+      usernameClaim: z.string().trim().min(1).default('preferred_username'),
+      emailClaim: z.string().trim().min(1).default('email'),
+      /** Claim holding the user's groups (array or single string), e.g. `groups` in Keycloak. */
+      groupsClaim: z.string().trim().default(''),
+      /** Members of this group are granted ADMIN on login. Grant only: leaving the group does not revoke. */
+      adminGroup: z.string().trim().default(''),
+      /** When non-empty, only members of one of these groups may sign in. */
+      allowedGroups: z.array(z.string().trim().min(1)).default([]),
+      /**
+       * Sign an OIDC login in as an existing local/Jellyfin account with the same email.
+       * Off by default: matching on email is an account-takeover risk if the IdP lets users set
+       * unverified emails or if the IdP is shared with untrusted tenants. Even when on, the IdP
+       * must report `email_verified: true`, and administrator accounts are never linked unless
+       * `linkAdminAccounts` is also on.
+       */
+      linkExistingByEmail: z.boolean().default(false),
+      linkAdminAccounts: z.boolean().default(false),
+      /**
+       * Permit an `http://` issuer (discovery, token and JWKS requests in clear text). Only for an
+       * IdP on a trusted private network; the default requires https.
+       */
+      allowInsecureHttp: z.boolean().default(false),
+    })
+    .refine((v) => v.groupsClaim !== '' || (v.adminGroup === '' && v.allowedGroups.length === 0), {
+      message: 'groupsClaim is required when adminGroup or allowedGroups is set',
+      path: ['groupsClaim'],
     })
     .prefault({}),
 });

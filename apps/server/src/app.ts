@@ -33,6 +33,7 @@ import { UsersService } from './services/users.ts';
 import { authRoutes } from './routes/auth.ts';
 import { jellyfinAuthRoutes } from './auth/jellyfin.ts';
 import { MediaServerRegistry } from './adapters/mediaserver/registry.ts';
+import { oidcRoutes } from './routes/oidc.ts';
 import { healthRoutes, type HealthDeps } from './routes/health.ts';
 import { settingsRoutes } from './routes/settings.ts';
 import { registerSetupGate, setupRoutes } from './routes/setup.ts';
@@ -278,6 +279,8 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
   await app.register(setupRoutes(config), { prefix: API_PREFIX });
   await app.register(settingsRoutes, { prefix: API_PREFIX });
   await app.register(userRoutes, { prefix: API_PREFIX });
+  // OIDC login (H-08)
+  await app.register(oidcRoutes(config, { now: deps.auth?.now }), { prefix: API_PREFIX });
 
   for (const plugin of deps.routes ?? []) {
     await app.register(plugin, { prefix: API_PREFIX });
