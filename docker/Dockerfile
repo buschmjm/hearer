@@ -43,9 +43,9 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 # Fail the build here, not at runtime, if the native module did not come along.
 # Fall back to an explicit rebuild if the deploy skipped lifecycle scripts.
 WORKDIR /out
-RUN node -e "new (require('better-sqlite3'))(':memory:').close()" \
-    || { pnpm rebuild better-sqlite3 \
-         && node -e "new (require('better-sqlite3'))(':memory:').close()"; }
+RUN CHECK="new (require('better-sqlite3'))(':memory:').close(); require('argon2')" \
+    && { node -e "$CHECK" \
+         || { pnpm rebuild better-sqlite3 argon2 && node -e "$CHECK"; }; }
 
 # ---------------------------------------------------------------------------
 # Runtime stage

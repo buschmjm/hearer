@@ -14,3 +14,5 @@ export function userAgent(version: string = APP_VERSION): string {
 export * from './enums.ts';
 export * from './permissions.ts';
 export * from './settings.ts';
+export * from './dto/auth.ts';
+export * from './dto/users.ts';

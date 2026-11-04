@@ -28,6 +28,7 @@ const envSchema = z.object({
   LOG_FORMAT: z.enum(['json', 'pretty']).default('json'),
   HEARER_SECRET: z.preprocess(emptyToUndefined, z.string().min(16).optional()),
   TRUST_PROXY: z.preprocess(emptyToUndefined, trustProxy.default(false)),
+  AUTH_RATE_LIMIT_MAX: z.preprocess(emptyToUndefined, z.coerce.number().int().min(1).default(10)),
 });
 
 export interface Config {
@@ -43,6 +44,8 @@ export interface Config {
   /** Optional; when absent a secret is generated into DATA_DIR later. */
   secret: string | undefined;
   trustProxy: boolean | number;
+  /** Login / setup attempts allowed per client address per minute. */
+  authRateLimitMax: number;
 }
 
 export class ConfigError extends Error {
@@ -76,5 +79,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     logFormat: e.LOG_FORMAT,
     secret: e.HEARER_SECRET,
     trustProxy: e.TRUST_PROXY,
+    authRateLimitMax: e.AUTH_RATE_LIMIT_MAX,
   };
 }

@@ -1,7 +1,11 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { APP_NAME, APP_VERSION } from '@hearer/shared';
 import swagger from '@fastify/swagger';
-import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
+import Fastify, {
+  type FastifyInstance,
+  type FastifyServerOptions,
+  type RouteOptions,
+} from 'fastify';
 import {
   hasZodFastifySchemaValidationErrors,
   isResponseSerializationError,
@@ -18,11 +22,21 @@ import { openDatabase, pingDatabase, MEMORY_DB, type Database_ } from './db/clie
 import { runMigrations } from './db/migrate.ts';
 import { JobRunner, type JobRunnerOptions } from './jobs/runner.ts';
 import { MAINTENANCE_INTERVAL_MS, MAINTENANCE_JOB, maintenanceJob } from './jobs/maintenance.ts';
+import { API_PREFIX } from './lib/constants.ts';
+import { ApiKeyService } from './auth/apikeys.ts';
+import { createAuthHelpers, registerAuth, type AuthHelpers } from './auth/plugin.ts';
+import { SessionService, type SessionOptions } from './auth/sessions.ts';
+import { HttpError } from './lib/http-error.ts';
 import { SecretBox } from './lib/secrets.ts';
 import { SettingsService } from './services/settings.ts';
+import { UsersService } from './services/users.ts';
+import { authRoutes } from './routes/auth.ts';
 import { healthRoutes, type HealthDeps } from './routes/health.ts';
+import { settingsRoutes } from './routes/settings.ts';
+import { registerSetupGate, setupRoutes } from './routes/setup.ts';
+import { userRoutes } from './routes/users.ts';
 
-export const API_PREFIX = '/api/v1';
+export { API_PREFIX };
 const JOB_SHUTDOWN_GRACE_MS = 5_000;
 
 declare module 'fastify' {
@@ -33,6 +47,10 @@ declare module 'fastify' {
       secrets: SecretBox;
       settings: SettingsService;
       jobs: JobRunner;
+      users: UsersService;
+      sessions: SessionService;
+      apiKeys: ApiKeyService;
+      auth: AuthHelpers;
     };
   }
 }
@@ -60,6 +78,13 @@ export interface AppDeps {
   >;
   /** Override the logger (tests). Defaults to one built from config. */
   logger?: Logger;
+  /** Auth tuning (tests): session lifetime/clock and the login rate limit. */
+  auth?: SessionOptions & { rateLimitMax?: number };
+  /**
+   * Called for every route as it is registered (including the built-in ones). Lets tests
+   * enumerate the API surface, e.g. for the route-level permission matrix.
+   */
+  onRoute?: (route: RouteOptions) => void;
 }
 
 export interface ApiErrorBody {
@@ -86,8 +111,21 @@ function toTrustProxy(
   return typeof value === 'number' ? (_address, hop) => hop < value : value;
 }
 
-function describeClientError(error: unknown): { status: number; code: string; message: string } {
+function describeClientError(error: unknown): {
+  status: number;
+  code: string;
+  message: string;
+  details?: unknown;
+} {
   if (!(error instanceof Error)) return { status: 500, code: 'internal_error', message: '' };
+  if (error instanceof HttpError) {
+    return {
+      status: error.statusCode,
+      code: error.code,
+      message: error.message,
+      ...(error.details === undefined ? {} : { details: error.details }),
+    };
+  }
   const { statusCode, code } = error as Error & { statusCode?: unknown; code?: unknown };
   return {
     status: typeof statusCode === 'number' ? statusCode : 500,
@@ -105,6 +143,8 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
     genReqId: () => randomUUID(),
   };
   const app = Fastify(serverOptions).withTypeProvider<ZodTypeProvider>();
+  const { onRoute } = deps;
+  if (onRoute) app.addHook('onRoute', onRoute);
 
   let database = deps.db;
   if (!database) {
@@ -119,11 +159,18 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
   const jobs = new JobRunner({ database, logger: app.log, ...deps.jobs });
   jobs.define(maintenanceJob({ database, stagingDir: config.stagingDir }));
   jobs.schedule({ type: MAINTENANCE_JOB, every: MAINTENANCE_INTERVAL_MS });
+  const settings = new SettingsService(database.db, secrets, app.log);
+  const sessions = new SessionService(database.db, deps.auth);
+  const apiKeys = new ApiKeyService(database.db, deps.auth?.now);
   app.decorate('hearer', {
     database,
     secrets,
-    settings: new SettingsService(database.db, secrets, app.log),
+    settings,
     jobs,
+    users: new UsersService(database.db, settings),
+    sessions,
+    apiKeys,
+    auth: createAuthHelpers({ config, settings, sessions, rateLimitMax: deps.auth?.rateLimitMax }),
   });
   if (deps.startJobs) {
     app.addHook('onReady', () => {
@@ -176,13 +223,22 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
       request.log.error({ err: error }, 'response serialization failed');
       return sendError(reply, 500, 'internal_error', 'Internal server error');
     }
-    const { status, code, message } = describeClientError(error);
-    if (status >= 500) {
+    const { status, code, message, details } = describeClientError(error);
+    if (status >= 500 && !(error instanceof HttpError)) {
       request.log.error({ err: error }, 'unhandled error');
       return sendError(reply, 500, 'internal_error', 'Internal server error');
     }
-    return sendError(reply, status, code, message);
+    return sendError(reply, status, code, message, details);
   });
+
+  await registerAuth(app, {
+    config,
+    settings,
+    sessions,
+    apiKeys,
+    helpers: app.hearer.auth,
+  });
+  registerSetupGate(app);
 
   await app.register(swagger, {
     openapi: {
@@ -208,6 +264,11 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
     }),
     { prefix: API_PREFIX },
   );
+
+  await app.register(authRoutes, { prefix: API_PREFIX });
+  await app.register(setupRoutes(config), { prefix: API_PREFIX });
+  await app.register(settingsRoutes, { prefix: API_PREFIX });
+  await app.register(userRoutes, { prefix: API_PREFIX });
 
   for (const plugin of deps.routes ?? []) {
     await app.register(plugin, { prefix: API_PREFIX });
