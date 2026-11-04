@@ -1,7 +1,9 @@
 # Example Compose file for Hearer. Copy to docker-compose.yml and adjust.
 services:
   hearer:
-    image: ghcr.io/OWNER/hearer:edge # replace OWNER with the GitHub account that publishes the image
+    # `latest` is the newest release; pin an exact version (for example :0.1.0) to upgrade on purpose,
+    # or use :edge for builds of the main branch.
+    image: ghcr.io/buschmjm/hearer:latest
     # To build from a checkout of this repo instead of pulling the image,
     # comment out `image` above and uncomment:
     # build:
@@ -20,6 +22,8 @@ services:
       TZ: 'Etc/UTC'
       # Public URL users reach Hearer at (used for links and OIDC callbacks).
       # BASE_URL: 'https://hearer.example.com'
+      # Behind a reverse proxy: the number of proxies in front of Hearer.
+      # TRUST_PROXY: '1'
       # Optional: at least 16 characters. Encrypts stored credentials. If unset,
       # a key is generated into /data/secret.key; back that file up with /data.
       # HEARER_SECRET: ''

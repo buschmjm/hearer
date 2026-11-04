@@ -70,6 +70,8 @@ const OPEN_BEFORE_SETUP = [
 ];
 /** Single sign-on cannot bootstrap the app, so it stays gated inside the open `auth` prefix. */
 const GATED_BEFORE_SETUP = '/api/v1/auth/oidc';
+/** The wizard's "Test connection" button; still needs MANAGE_SETTINGS (checked by the matrix). */
+const WIZARD_CONNECTION_TEST = '/api/v1/settings/mediaServer/test';
 
 interface RouteKey {
   method: string;
@@ -190,7 +192,8 @@ describe('route-level permission matrix', () => {
     const gated = routes.filter(
       (r) =>
         r.url.startsWith(GATED_BEFORE_SETUP) ||
-        !OPEN_BEFORE_SETUP.some((p) => r.url === p || r.url.startsWith(`${p}/`)),
+        (r.url !== WIZARD_CONNECTION_TEST &&
+          !OPEN_BEFORE_SETUP.some((p) => r.url === p || r.url.startsWith(`${p}/`))),
     );
     expect(gated.length).toBeGreaterThan(5);
     for (const route of gated) {

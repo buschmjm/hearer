@@ -33,6 +33,12 @@ const OPEN_BEFORE_SETUP = ['health', 'auth', 'setup', 'openapi.json'].map(
   (name) => `${API_PREFIX}/${name}`,
 );
 
+/**
+ * The wizard's "Test connection" button calls this before setup is complete. It stays behind the
+ * MANAGE_SETTINGS guard, and before the wizard finishes only the first administrator exists.
+ */
+const OPEN_ROUTES_BEFORE_SETUP = [`${API_PREFIX}/settings/mediaServer/test`];
+
 /** Gated until setup completes even though it lives under the open `auth` prefix. */
 const OIDC_PREFIX = `${API_PREFIX}/auth/oidc`;
 
@@ -53,7 +59,10 @@ export function registerSetupGate(app: FastifyInstance): void {
       }
       return Promise.resolve();
     }
-    if (OPEN_BEFORE_SETUP.some((open) => url === open || url.startsWith(`${open}/`))) {
+    if (
+      OPEN_ROUTES_BEFORE_SETUP.includes(url) ||
+      OPEN_BEFORE_SETUP.some((open) => url === open || url.startsWith(`${open}/`))
+    ) {
       return Promise.resolve();
     }
     if (!app.hearer.settings.get('general').setupComplete) {

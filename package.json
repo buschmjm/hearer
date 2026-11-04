@@ -13,6 +13,7 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "e2e": "pnpm --filter server --filter web build && pnpm --filter e2e e2e",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "dev": "mkdir -p .dev/data .dev/music .dev/staging && NODE_ENV=development LOG_FORMAT=pretty DATA_DIR=${DATA_DIR:-$PWD/.dev/data} MUSIC_DIR=${MUSIC_DIR:-$PWD/.dev/music} STAGING_DIR=${STAGING_DIR:-$PWD/.dev/staging} concurrently -n server,web -c blue,magenta \"pnpm --filter server dev\" \"pnpm --filter web dev\""

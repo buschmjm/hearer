@@ -180,6 +180,21 @@ describe('setup gating', () => {
     expect((await call(h.app, creds, 'GET', '/api/v1/settings')).statusCode).toBe(503);
   });
 
+  it('lets the wizard test the media server connection, for an administrator only', async () => {
+    h = await createHarness();
+    const url = '/api/v1/settings/mediaServer/test';
+    // Anonymous callers are rejected by the permission guard, not by the setup gate.
+    expect((await call(h.app, undefined, 'POST', url, {})).statusCode).toBe(401);
+    const created = await createAdmin();
+    const creds = {
+      cookie: cookieHeader(created),
+      csrf: created.json<SessionResponse>().csrfToken,
+    };
+    const res = await call(h.app, creds, 'POST', url, { url: 'http://127.0.0.1:9', apiKey: 'k' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<{ ok: boolean }>().ok).toBe(false);
+  });
+
   async function createLogin() {
     return h.app.inject({
       method: 'POST',
