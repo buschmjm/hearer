@@ -682,6 +682,8 @@ All matched files use Prettier code style!
 
 ## H-18 — Web: requests queue, my requests, timeline
 
+## H-20a - Jobs admin API, profile API, settings pages, schema form, permission editor
+
 **Status:** done
 
 **Shipped:**
@@ -710,3 +712,20 @@ All matched files use Prettier code style!
 **Next:** H-19 (upload UI).
 
 **Open questions:** none.
+
+- Server: `routes/jobs.ts` (MANAGE_SETTINGS): `GET /jobs` (filter `status`/`type`, paginated, newest first), `GET /jobs/:id`, `POST /jobs/:id/retry` (dead/failed to queued, attempts reset, 409 `job_not_retryable`, 409 `job_already_active` when a unique key is already active), `DELETE /jobs/:id` (queued/dead only, 409 `job_not_deletable`), `GET /jobs/summary` (counts by type x status, totals, recurring schedules with next run). Payloads are shown with secret-looking keys redacted. `Scheduler.list()` / `JobRunner.schedules()` expose next-run times (null while the worker is stopped). `PATCH /auth/me` (session only, local accounts; display name and email) so the profile page can save; added to the matrix allowlist. DTOs in `packages/shared/src/dto/jobs.ts`, `updateProfileRequestSchema`.
+- Web: `SchemaForm` (JSON schema to form: boolean, number, enum, string, URL, secret with masked round trip, string list, string map, enum array; per-field overrides), `lib/schemaForm.ts` (kinds, defaults, client validation, normalize), `PermissionEditor` (escalation-disabled bits, ADMIN implies all), Dialog/ConfirmDialog, toasts, controls (Switch, SecretField, Section, Pagination...), `useSectionDraft` (full-section save, dirty state, zod + server field errors), tabs General, Sign-in (OIDC test, redirect URI copy, warnings), Media server (test, path mappings, library index + sync), Library & uploads (live template preview), Metadata, Fulfillment (schema-driven providers, Lidarr test and dropdowns). Routes `/admin`, `/admin/settings/*`, stubs for admin/account removed.
+
+**Verify:** `pnpm --filter server test -- jobs`, `pnpm --filter web test` (see H-20b for the full run).
+
+**Deviations:** `PATCH /auth/me` was not in the brief (the profile page needs it). H-20a and H-20b landed in one commit (the router and settings layout reference both halves). DECISIONS.md not amended.
+
+## H-20b - Users, jobs page, account pages, notifications tab
+
+**Status:** done
+
+**Shipped:** `/admin/users` (search, pagination, create, edit with escalation rules, reset password, delete, Jellyfin import), `/admin/jobs` (summary cards, filters, expandable errors/payloads, retry/delete, 5 s auto-refresh while visible), `/account` (profile, password), `/account/notifications` (email and personal ntfy), `/account/api-keys` (token shown once with copy), notifications settings tab (targets, schema-driven add/edit dialog, event checklist, send test saved or unsaved, enable toggle, delete with confirm). Pages check permissions before any API call (`RequirePermission`). Tests: `schemaForm.test.tsx`, `settings.test.tsx`, `admin.test.tsx`; server `jobs.admin.test.ts`, `auth.profile.test.ts`. Screenshots: `scratchpad/h20-*.png` (1280 and 390).
+
+**Verify:** see the final report.
+
+**Open questions:** the Jellyfin import and Lidarr dropdowns were only exercised against mocks. The settings save bar is sticky only while there are unsaved changes.

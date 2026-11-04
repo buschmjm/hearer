@@ -7,6 +7,7 @@ import {
   meResponseSchema,
   permissionNames,
   sessionResponseSchema,
+  updateProfileRequestSchema,
   type ApiKeyDto,
 } from '@hearer/shared';
 import type { FastifyPluginCallbackZod } from 'fastify-type-provider-zod';
@@ -119,6 +120,41 @@ export const authRoutes: FastifyPluginCallbackZod = (app, _options, done) => {
         user: toUserDto(row),
         permissions: permissionNames(row.permissions),
         csrfToken: method.method === 'session' ? method.csrfToken : null,
+        authMethod: method.method,
+      };
+    },
+  );
+
+  app.patch(
+    '/auth/me',
+    {
+      onRequest: [requireSession()],
+      schema: {
+        tags: ['auth'],
+        summary: 'Edit your own display name or email (local accounts)',
+        body: updateProfileRequestSchema,
+        response: { 200: meResponseSchema },
+      },
+    },
+    (request) => {
+      const current = request.user;
+      const method = request.auth;
+      if (!current || method?.method !== 'session') throw unauthorized();
+      const row = users.get(current.id);
+      if (!row) throw unauthorized();
+      if (row.authType !== 'local') {
+        throw new HttpError(
+          400,
+          'profile_not_editable',
+          'This account takes its profile from the sign-in provider',
+        );
+      }
+      const updated = users.update(row.id, request.body);
+      if (!updated) throw unauthorized();
+      return {
+        user: toUserDto(updated),
+        permissions: permissionNames(updated.permissions),
+        csrfToken: method.csrfToken,
         authMethod: method.method,
       };
     },
