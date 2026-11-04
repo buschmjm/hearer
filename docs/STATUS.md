@@ -200,3 +200,38 @@ The root path of the entrypoint (user mapping, chown, su-exec) was not executed 
 **Next:** H-06.
 
 **Open questions:** `LABEL ...source` in the Dockerfile names the upstream repo (CI overrides labels via metadata-action). The static web path `/app/public` will need serving by the server in H-16. The compose example uses `OWNER` as a placeholder.
+
+## H-04 — DB-backed job runner
+
+**Status:** done
+
+**Shipped:**
+
+- `apps/server/src/jobs/registry.ts`: `defineJob({type, payload (zod), concurrency, maxAttempts?, timeoutMs?, backoff?, handler(payload, ctx)})`, `JobRegistry`, `PermanentJobError`, `computeBackoffMs` (`min(base*2^(attempt-1), max)` +/- jitter; defaults 5 s base, 15 min cap, 0.2 jitter), `JobContext` (`jobId, attempt, signal, log, db, enqueue`).
+- `jobs/runner.ts`: `JobRunner` with `define`, `schedule`, `enqueue(typeOrDef, payload, {runAfter, delayMs, priority, uniqueKey, maxAttempts})` (payload validated; duplicate `uniqueKey` while queued/running returns the existing id, check+insert in a `BEGIN IMMEDIATE` transaction), `get`, `start`, `stop({graceMs})`, `tick`, `drain`, `wake`, `housekeeping`, `recoverOnStart`. Atomic claim is one `UPDATE ... WHERE id = (SELECT ... ORDER BY priority DESC, run_after, id LIMIT 1) RETURNING *`, restricted to types with free capacity. Per-type in-flight counters plus a global `maxConcurrency` (default 4). Poll loop (default 1 s) plus an immediate coalesced wake on enqueue and after each job.
+- `jobs/scheduler.ts`: `every: ms` (enqueued at start, then each interval) and `dailyAtHour` (server-local hour; first run at the next occurrence, not at start). Both enqueue with `uniqueKey = schedule:<type>`, so they never pile up.
+- `jobs/maintenance.ts`: `maintenance.cleanup` (hourly): expired sessions; `mb_cache` rows past `fetched_at + ttl_seconds`; succeeded/failed jobs older than 7 days; dead jobs older than 30 days; stale tus artifacts in `${STAGING_DIR}/tmp` older than 24 h (pair `<id>` + `<id>.json` is removed when its newest member is stale). Only regular files directly in `tmp` are unlinked; symlinks (and a symlinked `tmp`) are never followed or removed. Returns and logs counts.
+- Wiring: `buildApp` creates the runner, registers + schedules maintenance, exposes `app.hearer.jobs`, starts on `onReady` only when `deps.startJobs` is true (default false, so tests stay idle; `index.ts` passes true and `workerId: 'main'`), and stops on close (5 s grace) before the owned DB closes.
+- No schema change and no migration; the existing `jobs` table is reused.
+
+**Terminal-state model:** `succeeded` or `dead`. `dead` covers PermanentJobError, exhausted attempts and an unparseable stored payload; `last_error` has `Name: message` + stack, truncated to 4 000 chars. `failed` stays in the shared enum but the runner never writes it (the pruner still deletes it). Retries sit in `queued` with a later `run_after`.
+
+**Attempt accounting / recovery:** `attempts` is incremented at claim. A graceful stop or shutdown abort refunds the attempt and re-queues. Crash recovery keeps the attempt consumed (a job that kills the process cannot loop forever); if that exhausts `max_attempts` it goes `dead`. On start, rows `running` with this runner's `workerId` (stable `main` in production) or with a lock older than `staleLockMs` (5 min) are recovered; a random default `workerId` (tests, extra instances) recovers only stale locks, so a second live runner is never robbed. Housekeeping (every `staleLockMs/3`) refreshes the locks this runner holds and recovers other workers' stale locks.
+
+**Timeouts:** the handler's signal is aborted and the attempt counts as failed (retry or dead). The handler is raced against the abort, so a handler that ignores its signal cannot hold its slot; its late result is discarded.
+
+**Verify:** `pnpm --filter server test -- jobs` and `pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm --filter server db:check && pnpm format:check` (full suite run 3 times, no flakes)
+
+```text
+packages/shared test:       Tests  11 passed (11)
+apps/server test:  Test Files  9 passed (9)
+apps/server test:       Tests  103 passed (103)
+db:check ok: schema matches 1 committed migration(s)
+All matched files use Prettier code style!
+```
+
+**Deviations:** none; DECISIONS.md not amended. `pnpm --filter server test -- jobs` runs the whole server suite (the `--` filter is not applied by vitest here); the job tests are `test/jobs.*.test.ts`.
+
+**Next:** H-06 (auth), H-10 (library sync registers `library.sync` via `runner.define` + `runner.schedule`).
+
+**Open questions:** `dailyAtHour` uses the server's local time zone (container TZ, usually UTC). Feature batches should call `app.hearer.jobs.define(...)` / `.schedule(...)` from `buildApp` before `ready`.

@@ -16,16 +16,24 @@ import pretty from 'pino-pretty';
 import type { Config } from './config.ts';
 import { openDatabase, pingDatabase, MEMORY_DB, type Database_ } from './db/client.ts';
 import { runMigrations } from './db/migrate.ts';
+import { JobRunner, type JobRunnerOptions } from './jobs/runner.ts';
+import { MAINTENANCE_INTERVAL_MS, MAINTENANCE_JOB, maintenanceJob } from './jobs/maintenance.ts';
 import { SecretBox } from './lib/secrets.ts';
 import { SettingsService } from './services/settings.ts';
 import { healthRoutes, type HealthDeps } from './routes/health.ts';
 
 export const API_PREFIX = '/api/v1';
+const JOB_SHUTDOWN_GRACE_MS = 5_000;
 
 declare module 'fastify' {
   interface FastifyInstance {
     /** Shared services; route plugins use these instead of opening their own handles. */
-    hearer: { database: Database_; secrets: SecretBox; settings: SettingsService };
+    hearer: {
+      database: Database_;
+      secrets: SecretBox;
+      settings: SettingsService;
+      jobs: JobRunner;
+    };
   }
 }
 
@@ -41,6 +49,15 @@ export interface AppDeps {
   healthChecks?: HealthDeps['checks'];
   /** Extra route plugins registered under /api/v1 (feature batches, tests). */
   routes?: FastifyPluginCallbackZod[];
+  /**
+   * Start the job runner when the server is ready and stop it on close. Defaults to false so
+   * tests build an idle app; index.ts passes true.
+   */
+  startJobs?: boolean;
+  /** Job runner overrides (tests). */
+  jobs?: Partial<
+    Pick<JobRunnerOptions, 'workerId' | 'pollIntervalMs' | 'maxConcurrency' | 'staleLockMs'>
+  >;
   /** Override the logger (tests). Defaults to one built from config. */
   logger?: Logger;
 }
@@ -99,10 +116,24 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
     database = owned;
   }
   const secrets = deps.secrets ?? new SecretBox(config.secret ?? randomBytes(32));
+  const jobs = new JobRunner({ database, logger: app.log, ...deps.jobs });
+  jobs.define(maintenanceJob({ database, stagingDir: config.stagingDir }));
+  jobs.schedule({ type: MAINTENANCE_JOB, every: MAINTENANCE_INTERVAL_MS });
   app.decorate('hearer', {
     database,
     secrets,
     settings: new SettingsService(database.db, secrets, app.log),
+    jobs,
+  });
+  if (deps.startJobs) {
+    app.addHook('onReady', () => {
+      jobs.start();
+    });
+  }
+  // Registered after the owned-database hook; onClose hooks run last-registered first, so the
+  // runner is stopped before the database closes.
+  app.addHook('onClose', async () => {
+    await jobs.stop({ graceMs: JOB_SHUTDOWN_GRACE_MS });
   });
   const dbHandle = database;
 

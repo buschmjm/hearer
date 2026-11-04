@@ -13,7 +13,12 @@ async function main(): Promise<void> {
   try {
     runMigrations(database.db);
     const secrets = createSecretBox({ secret: config.secret, dataDir: config.dataDir });
-    app = await buildApp(config, { db: database, secrets });
+    app = await buildApp(config, {
+      db: database,
+      secrets,
+      startJobs: true,
+      jobs: { workerId: 'main' },
+    });
   } catch (err) {
     database.close();
     throw err;
