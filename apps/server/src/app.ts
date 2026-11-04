@@ -58,6 +58,13 @@ import {
   uploadProbeJob,
 } from './jobs/uploadProbe.ts';
 
+// H-14 analyze + review
+import { AcoustIdClient, type AcoustIdClientOptions } from './adapters/metadata/acoustid.ts';
+import { uploadAnalyzeJob } from './jobs/uploadAnalyze.ts';
+import { DuplicateChecker, MatchingService } from './services/matching.ts';
+import { UploadReviewService, type UploadEventSink } from './services/uploadReview.ts';
+import { uploadReviewRoutes } from './routes/uploads.review.ts';
+
 export { API_PREFIX };
 const JOB_SHUTDOWN_GRACE_MS = 5_000;
 
@@ -85,6 +92,8 @@ declare module 'fastify' {
       availability: AvailabilityMatcher;
       /** Upload receive: quotas, limits, staging paths (H-13). */
       uploads: UploadsService;
+      /** Upload review actions and auto-approval (H-14). */
+      uploadReview: UploadReviewService;
     };
   }
 }
@@ -127,6 +136,12 @@ export interface AppDeps {
   metadataOptions?: Partial<Omit<MusicBrainzOptions, 'db' | 'settings' | 'logger'>>;
   /** Library matching for badges. Defaults to the fuzzy index lookup (exact MBID, then name matches as 'possible'). */
   libraryLookup?: LibraryLookup;
+  /** Upload analysis tuning (tests): binary and time limit for fpcalc, AcoustID limiter. */
+  uploadAnalyze?: {
+    fpcalcBinary?: string;
+    fpcalcTimeoutMs?: number;
+    acoustIdLimiter?: AcoustIdClientOptions['limiter'];
+  };
   /** Catalog requests per user per minute (tests). */
   searchRateLimitMax?: number;
 }
@@ -224,6 +239,21 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
   const library = new LibraryService({ db: database.db, settings, mediaServer });
   // H-10: library.sync job + schedules.
   registerLibrarySync(jobs, library);
+  const uploadsService = new UploadsService({
+    db: database.db,
+    settings,
+    stagingDir: config.stagingDir,
+  });
+  // H-14: review actions and auto-approval.
+  const uploadReview = new UploadReviewService({
+    db: database.db,
+    uploads: uploadsService,
+    settings,
+    jobs,
+    // The event bus (H-11) may not be decorated yet; look it up at emit time.
+    events: () => (app.hearer as { events?: UploadEventSink }).events,
+    log: app.log,
+  });
   app.decorate('hearer', {
     database,
     secrets,
@@ -241,7 +271,8 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
     ),
     library,
     availability: new AvailabilityMatcher(database.db, metadata),
-    uploads: new UploadsService({ db: database.db, settings, stagingDir: config.stagingDir }),
+    uploads: uploadsService,
+    uploadReview,
   });
   // H-13: validate received uploads, and expire abandoned ones.
   jobs.define(
@@ -253,6 +284,33 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
   );
   jobs.define(uploadExpireJob({ uploads: app.hearer.uploads, db: database.db, log: app.log }));
   jobs.schedule({ type: UPLOAD_EXPIRE_JOB, every: UPLOAD_EXPIRE_INTERVAL_MS });
+  // H-14: fingerprint, AcoustID, candidate scoring, dedupe.
+  jobs.define(
+    uploadAnalyzeJob({
+      db: database.db,
+      uploads: app.hearer.uploads,
+      review: uploadReview,
+      matching: new MatchingService({
+        metadata,
+        coverBaseUrl: () => settings.get('metadata').coverArtBaseUrl,
+      }),
+      duplicates: new DuplicateChecker(database.db, deps.libraryLookup),
+      acoustId: new AcoustIdClient({
+        settings,
+        logger: app.log,
+        version,
+        ...(deps.uploadAnalyze?.acoustIdLimiter
+          ? { limiter: deps.uploadAnalyze.acoustIdLimiter }
+          : {}),
+      }),
+      ...(deps.uploadAnalyze?.fpcalcBinary
+        ? { fpcalcBinary: deps.uploadAnalyze.fpcalcBinary }
+        : {}),
+      ...(deps.uploadAnalyze?.fpcalcTimeoutMs
+        ? { fpcalcTimeoutMs: deps.uploadAnalyze.fpcalcTimeoutMs }
+        : {}),
+    }),
+  );
   if (deps.startJobs) {
     app.addHook('onReady', () => {
       jobs.start();
@@ -368,6 +426,7 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
   await app.register(libraryRoutes, { prefix: API_PREFIX });
   // H-13: tus receive and the upload JSON API.
   await app.register(uploadRoutes, { prefix: API_PREFIX });
+  await app.register(uploadReviewRoutes, { prefix: API_PREFIX });
 
   for (const plugin of deps.routes ?? []) {
     await app.register(plugin, { prefix: API_PREFIX });
