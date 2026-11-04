@@ -48,6 +48,15 @@ import { registerLibrarySync } from './jobs/librarySync.ts';
 import { libraryRoutes } from './routes/library.ts';
 import { AvailabilityMatcher, FuzzyLibraryLookup } from './services/availability.ts';
 import { LibraryService } from './services/library.ts';
+// H-13 uploads
+import { UploadsService } from './services/uploads.ts';
+import { uploadRoutes } from './routes/uploads.ts';
+import {
+  UPLOAD_EXPIRE_INTERVAL_MS,
+  UPLOAD_EXPIRE_JOB,
+  uploadExpireJob,
+  uploadProbeJob,
+} from './jobs/uploadProbe.ts';
 
 export { API_PREFIX };
 const JOB_SHUTDOWN_GRACE_MS = 5_000;
@@ -74,6 +83,8 @@ declare module 'fastify' {
       library: LibraryService;
       /** Request availability evaluation against the library index (H-10). */
       availability: AvailabilityMatcher;
+      /** Upload receive: quotas, limits, staging paths (H-13). */
+      uploads: UploadsService;
     };
   }
 }
@@ -230,7 +241,18 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
     ),
     library,
     availability: new AvailabilityMatcher(database.db, metadata),
+    uploads: new UploadsService({ db: database.db, settings, stagingDir: config.stagingDir }),
   });
+  // H-13: validate received uploads, and expire abandoned ones.
+  jobs.define(
+    uploadProbeJob({
+      uploads: app.hearer.uploads,
+      db: database.db,
+      hasJob: (type) => jobs.registry.has(type),
+    }),
+  );
+  jobs.define(uploadExpireJob({ uploads: app.hearer.uploads, db: database.db, log: app.log }));
+  jobs.schedule({ type: UPLOAD_EXPIRE_JOB, every: UPLOAD_EXPIRE_INTERVAL_MS });
   if (deps.startJobs) {
     app.addHook('onReady', () => {
       jobs.start();
@@ -344,6 +366,8 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
 
   // H-10: library status and manual sync.
   await app.register(libraryRoutes, { prefix: API_PREFIX });
+  // H-13: tus receive and the upload JSON API.
+  await app.register(uploadRoutes, { prefix: API_PREFIX });
 
   for (const plugin of deps.routes ?? []) {
     await app.register(plugin, { prefix: API_PREFIX });
