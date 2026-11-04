@@ -5,6 +5,13 @@ packages:
 # Single source of truth for pinned versions. Packages reference these with
 # "catalog:" so every workspace member uses the exact same version.
 catalog:
+  '@fastify/swagger': 9.9.3
+  esbuild: 0.28.2
+  fastify: 5.12.8
+  fastify-type-provider-zod: 7.0.0
+  pino: 10.4.0
+  pino-pretty: 13.2.0
+  zod: 4.6.7
   '@eslint/js': 10.0.1
   '@types/node': 24.19.2
   eslint: 10.14.0

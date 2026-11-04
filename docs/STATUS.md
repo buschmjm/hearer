@@ -78,3 +78,26 @@ Nothing in the plan's stack is deprecated or missing. Incompatibilities to know 
 
 - The GitHub repo URL `https://github.com/buschmjm/hearer` is hard-coded in README, issue templates and `REPO_URL` (it is the real upstream, not a homelab value).
 - `APP_VERSION` is a constant `0.0.0`; release tooling (H-22, release-please) should update it.
+
+## H-02 — Server bootstrap + config + health
+
+**Status:** done
+
+**Shipped:**
+
+- `apps/server` (package `server`, so `pnpm --filter server <script>` works). Scripts: `dev` (`node --watch src/index.ts`, native type stripping, `erasableSyntaxOnly` on), `build` (esbuild bundle to `dist/index.js`, `@hearer/shared` inlined), `start`, `test`, `lint`, `typecheck`.
+- `src/config.ts`: `loadConfig(env = process.env)` (pure, zod 4), `Config` type, `ConfigError` listing every bad variable. Vars: `NODE_ENV`, `HOST`, `PORT`, `BASE_URL`, `DATA_DIR`, `MUSIC_DIR`, `STAGING_DIR`, `LOG_LEVEL`, `LOG_FORMAT`, `HEARER_SECRET` (optional, min 16 chars), `TRUST_PROXY` (true/false/hop count). Empty strings count as unset.
+- `src/app.ts`: `buildApp(config, deps?)` with the zod type provider, pino (redacts authorization/cookie headers, optional pretty output), `@fastify/swagger` OpenAPI 3 at `/api/v1/openapi.json`, uniform `{error:{code,message,details?}}` errors (zod validation 400, JSON 404, 500 with the message hidden), UUID request ids (echoed in `x-request-id`, an incoming one is honored). `deps.routes` lets later batches register plugins under `/api/v1`; `deps.healthChecks` feeds the health `checks` map.
+- `src/routes/health.ts`: `GET /api/v1/health` returns `{status: ok|degraded, version, uptimeSeconds, checks}`. H-03 passes a `db` check via `healthChecks`.
+- `src/index.ts`: SIGTERM/SIGINT graceful close with a 10 s forced-exit timeout; readable message and exit 1 on bad config or startup failure.
+- Catalog pins added: fastify 5.12.8, fastify-type-provider-zod 7.0.0, zod 4.6.7, pino 10.4.0, pino-pretty 13.2.0, @fastify/swagger 9.9.3, esbuild 0.28.2. Root `pnpm.onlyBuiltDependencies: [esbuild]`.
+
+**Verify:** `pnpm --filter server test && pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm format:check`
+
+Smoke: `pnpm build && PORT=5199 node dist/index.js`, then `curl /api/v1/health` returned `{"status":"ok","version":"0.0.0","uptimeSeconds":1.52,"checks":{}}`; unknown route gave the JSON 404; SIGTERM logged "shutting down" and exited; `PORT=abc` exited 1 with a readable message. `node src/index.ts` (dev path) also served health.
+
+**Deviations:** none; DECISIONS.md not amended. `pino-pretty` is a runtime dependency (used as a stream, so it bundles). Fastify's numeric `trustProxy` is expressed as a hop function because its types omit numbers. `requestIdLogLabel` and `disableRequestLogging` are deprecated in Fastify 5.12, so they are not used (default `reqId` label is the same).
+
+**Next:** H-03
+
+**Open questions:** none. The esbuild bundle is 2.7 MB because of swagger and pino-pretty; fine for the image. Native deps added in H-03 (better-sqlite3, argon2) must be marked `--external` in the build script.
