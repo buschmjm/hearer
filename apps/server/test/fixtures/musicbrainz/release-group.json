@@ -1,0 +1,19 @@
+{
+  "primary-type": "Album",
+  "artist-credit": [
+    {
+      "name": "Radiohead",
+      "joinphrase": "",
+      "artist": {
+        "type": "Group",
+        "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+        "name": "Radiohead"
+      }
+    }
+  ],
+  "secondary-type-ids": [],
+  "secondary-types": [],
+  "first-release-date": "1997-05-21",
+  "id": "b1392450-e666-3926-a536-22c65f834433",
+  "title": "OK Computer"
+}

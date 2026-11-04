@@ -139,11 +139,14 @@ describe('corrupt stored values', () => {
   });
 
   it('blanks only the secret when it cannot be decrypted (e.g. the key changed)', () => {
-    service.set('metadata', { acoustIdApiKey: 'abc123', cacheTtlDays: 5 });
+    service.set('metadata', {
+      acoustIdApiKey: 'abc123',
+      cacheTtl: { entityDays: 5, searchDays: 2 },
+    });
     const other = makeService(new SecretBox('a-different-secret-key'));
     const value = other.get('metadata');
     expect(value.acoustIdApiKey).toBe('');
-    expect(value.cacheTtlDays).toBe(5);
+    expect(value.cacheTtl).toEqual({ entityDays: 5, searchDays: 2 });
     expect(warn).toHaveBeenCalledOnce();
     expect(JSON.stringify(warn.mock.calls)).not.toContain('abc123');
   });
