@@ -396,6 +396,8 @@ The mock IdP (`test/helpers/mock-idp.ts`) is a real node:http server on port 0 w
 
 ## H-13 — Upload receive (tus) + validation
 
+## H-16a — Web shell: scaffold, API client, auth, layout, login, static serving + CSP
+
 **Status:** done
 
 **Shipped:**
@@ -431,12 +433,52 @@ The mock IdP (`test/helpers/mock-idp.ts`) is a real node:http server on port 0 w
 
 **Verify:** `pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm --filter server db:check && pnpm format:check` (all green; `pnpm --filter server build` bundles tus fine)
 
-```text
+````text
 db:check ok: schema matches 2 committed migration(s)
+- `apps/web` (package `web`): Vite 8, React 19, TanStack Router (code-based routes in `src/router.tsx`, no generated tree; add a `createRoute` and list it in `routeTree`) and Query, Tailwind 4 via `@tailwindcss/vite`, strict TS (Bundler resolution, DOM lib), all versions pinned. ESLint: root flat config gained an `apps/web` block (react-hooks, react-refresh, browser globals); `**/public/**` is ignored. Dev: `pnpm dev` at the root starts the server (dev env, data under `.dev/`) and Vite on :5173, which proxies `/api` to :5055 (`API_TARGET` overrides).
+- `src/api/client.ts`: typed `fetch` wrapper (`same-origin` cookies, `x-csrf-token` on POST/PUT/PATCH/DELETE from a token set by login, first-admin creation or `/auth/me`), `ApiError` from the error envelope (with `fieldErrors` for `validation_error`), network failures as status 0, optional zod response schema. 401 runs the registered handler (drop auth, go to `/login?returnTo=`) unless the call opts out; 503 `setup_required` goes to `/setup`. Query wrappers in `api/auth.ts` (`useAuth` with shared `hasPermission`, sign in local/Jellyfin, sign out) and `api/setup.ts`.
+- Route guard: protected layout route (`beforeLoad`) checks the session and setup status; `/login` redirects to `/setup` while no admin exists. `returnTo` is restricted to same-site paths.
+- UI: dark-first design tokens with light/dark/system toggle (preference in `localStorage`, applied before paint by `public/theme-init.js` so the CSP needs no inline script), responsive `Layout` (sidebar on desktop, top bar + bottom tabs on phones, user menu with profile / API keys / theme / sign out), permission-filtered nav (`lib/nav.ts`), home page with search box to `/search?q=`, 404 page, error boundary, favicon SVG. Pages other batches build (`/search`, `/requests`, `/upload`, `/admin`, `/account`, `/account/api-keys`) are "coming soon" route stubs in `routes/stubs.tsx`; each is a real route, none is a dead link.
+- Login page: local form, Jellyfin tab and SSO button only when enabled, `?error=` codes mapped to friendly messages.
+- Server: `GET /api/v1/auth/methods` (public: `appTitle`, `local`, `jellyfin`, `oidc{enabled,buttonLabel}`; shared `authMethodsSchema`; added to the route-matrix public allowlist). `STATIC_DIR` env; default `/app/public` in production and `apps/web/dist` in development, only when it holds an `index.html`; tests default to API-only. `@fastify/static` 10.1.8 (hashed `/assets/*` immutable for a year, `index.html` no-cache, other files 1 h) with SPA fallback for GET/HEAD requests accepting HTML outside `/api`; `@fastify/helmet` 13.2.0 with CSP `default-src 'self'; script-src 'self'; style-src 'self'` (no inline), `img-src 'self' data: https://coverartarchive.org https://*.archive.org`, `connect-src 'self'`, `frame-ancestors 'none'`, no `upgrade-insecure-requests` (plain-http installs). `unsafe-inline` is not needed.
+- Tests: server `static.test.ts` (serving, caching, fallback, `/api` stays JSON 404, CSP, API-only mode, `/auth/methods`); web client, login, layout/nav and theme tests (hand-rolled fetch mock).
+
+**Verify:** `pnpm --filter web build && pnpm --filter web test` plus the full `pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm --filter server db:check && pnpm format:check` (final output under H-16b).
+
+**Deviations:** more than 8 files (new app scaffold). DECISIONS.md not amended.
+
+**Next:** H-16b (setup wizard), then H-17.
+
+**Open questions:** none.
+
+## H-16b — Setup wizard
+
+**Status:** done
+
+**Shipped:**
+
+- `/setup` multi-step wizard (`routes/setup.tsx`, `components/wizard/*`), driven by `GET /setup/status`: 1 Admin (`POST /setup/admin`, confirm password, shared `setupAdminRequestSchema`), 2 General (title, application URL, default permission checkboxes; validated with the shared settings schema), 3 Media server (URL + API key, "Test connection" via `POST /settings/mediaServer/test`, `PUT /setup/mediaServer`, or "Skip for now"), 4 Library and uploads (MUSIC_DIR/STAGING_DIR writability from status with "Check again", naming and singles templates with a live preview and variable list, max upload size; Continue is blocked until both folders are writable), 5 Review (summary, `POST /setup/complete`, then home).
+- Each step validates before calling the API, shows server errors inline (field errors from `validation_error`, `media_server_test_failed`, `setup_admin_exists`, `directories_not_ready`) and can go back. Resume: no admin starts at step 1; an existing admin starts at step 2 (signed in) or shows a sign-in form (no session). The current step is kept in `sessionStorage`. Settings sections are saved by fetching the stored section and merging the edited fields, because `PUT` replaces the whole section.
+- `lib/template.ts`: preview renderer and validator for the naming template (`{var}`, `{track:02}`, `{disc:?}`).
+- Tests: `wizard.test.tsx` (14), `template.test.ts` (5). Web total 58 tests.
+- Screenshots (1280 and 390 px, dark; login also light and with errors): `/tmp/claude-0/-home-user/d2e062ff-6bd1-5840-b011-41cd111dc499/scratchpad/h16-*.png`.
+
+**Verify:** `pnpm --filter web build && pnpm --filter web test` and `pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm --filter server db:check && pnpm format:check`
+
+```text
+apps/server test:    Duration  40.15s
+db:check ok: schema matches 1 committed migration(s)
 Checking formatting...
 All matched files use Prettier code style!
-```
+````
 
 **Deviations:** Chunked transfer encoding is refused (411) instead of counting bytes mid-stream, because Node cannot be tapped without consuming the body; Content-Length is enforced by Node's parser. Disallowed extension returns 400 (not 415). DECISIONS.md not amended.
 **Next:** H-14 (analyze) can register `upload.analyze`; H-15 can reuse `sanitizeFileName`/`assertInside`.
 **Open questions:** A tus create that fails after the DB insert leaves a RECEIVING row until `upload.expire` clears it (24 h), counting against quota until then.
+Smoke: `STATIC_DIR=apps/web/dist node apps/server/dist/index.js` with a temp `DATA_DIR`: `/` and `/setup` returned HTML (CSP header present, `cache-control: no-cache` on the page), `/api/v1/health` returned JSON; the server was stopped by PID.
+
+**Deviations:** the `{disc:?}` preview rule (disc number plus a dash on multi-disc releases only) is an assumption; H-15's real renderer must match or the preview must follow it. The media server step is skippable (Hearer works with local accounts and manual fulfillment). DECISIONS.md not amended.
+
+**Next:** H-17 (search page replaces the `SearchPage` stub in `routes/stubs.tsx`).
+
+**Open questions:** none.

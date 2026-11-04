@@ -16,3 +16,4 @@ coverage/
 *.sqlite-*
 *.db
 .db-check-*/
+.dev/
