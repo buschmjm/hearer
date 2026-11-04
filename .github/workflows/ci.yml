@@ -29,6 +29,8 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
+      # ffprobe validates uploads (H-13); fpcalc fingerprints them (H-14).
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg libchromaprint-tools
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
       - run: pnpm -r lint
