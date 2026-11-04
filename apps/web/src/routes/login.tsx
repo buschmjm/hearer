@@ -13,7 +13,7 @@ import { safeReturnTo } from '../lib/returnTo.ts';
 
 type Kind = 'local' | 'jellyfin';
 
-function CredentialsForm({ kind, onDone }: { kind: Kind; onDone: () => void }) {
+export function CredentialsForm({ kind, onDone }: { kind: Kind; onDone: () => void }) {
   const signIn = useSignIn(kind);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
