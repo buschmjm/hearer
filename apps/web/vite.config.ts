@@ -33,5 +33,7 @@ export default defineConfig({
     globals: true,
     setupFiles: ['test/setup.ts'],
     css: false,
+    // Above asyncUtilTimeout (test/setup.ts) so a slow lazy chunk fails as a query, not a timeout.
+    testTimeout: 15_000,
   },
 });
