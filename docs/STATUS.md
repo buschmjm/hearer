@@ -391,3 +391,32 @@ The mock IdP (`test/helpers/mock-idp.ts`) is a real node:http server on port 0 w
 **Next:** H-10 (implement a fuzzy `LibraryLookup` and pass it as `AppDeps.libraryLookup`).
 
 **Open questions / notes for H-16:** the CSP `img-src` must allow `https://coverartarchive.org` and `https://*.archive.org` (the archive answers 307 to archive.org), and covers can 404, so the UI needs an `onerror` fallback. Cover URLs are the 250 px variant; swap `front-250` for `front-500`/`front-1200` for larger renders. Release groups with more than 100 releases only consider the first 100 for the representative-release choice.
+
+## H-13 — Upload receive (tus) + validation
+
+**Status:** done
+
+**Shipped:**
+
+- `routes/uploads.ts`: `@tus/server` 2.4.7 + `@tus/file-store` at `/api/v1/uploads/tus` (datastore `${STAGING_DIR}/tmp`, created lazily on first use). Fastify parser for `application/offset+octet-stream` leaves the stream untouched; POST/HEAD/PATCH/DELETE/OPTIONS on `/uploads/tus` and `/uploads/tus/*` call `tus.handle(req.raw, reply.raw)` after `reply.hijack()`. Guard: UPLOAD permission (cookie or API key); the global CSRF hook already covers POST/PATCH/DELETE. CORS is off (`allowedOrigins: []`). Locations are relative.
+- Chunk limit 50 MiB (`MAX_UPLOAD_CHUNK_BYTES` in shared): PATCH (and POST creation-with-upload) must send `Content-Length`; above 50 MiB gives 413 `chunk_too_large`, no length gives 411; the connection is closed. Clients must use `chunkSize` below 50 MiB (H-19: 50 MiB minus a margin) and must not use chunked encoding. Error bodies from tus hooks are the JSON envelope text.
+- Ownership: every HEAD/PATCH/DELETE looks up the DB row; another user (even an admin) gets 404. Admins/managers cancel others' uploads through `DELETE /uploads/:id`.
+- `onUploadCreate`: metadata (`filename` required, `batchId`/`targetRequestId` optional uuids, batch ids not shared across users, request must exist), extension allowlist (`aif` rides with `aiff`), size vs `uploads.maxFileSizeMb` (413), deferred/zero length 400, quota (403; user override or `general.defaultUploadQuota`, 0 = unlimited, ADMIN exempt, in-flight counted, REJECTED excluded, check+insert in one transaction), inserts a RECEIVING row. `onUploadFinish` marks RECEIVED, enqueues `upload.probe`, and returns `X-Hearer-Upload-Id`.
+- `jobs/uploadProbe.ts`: `upload.probe` (ffprobe via `lib/ffprobe.ts`: execFile arg array, timeout, JSON; needs an audio stream, duration > 0, codec allowlist and container that agrees with the extension; streamed sha256; move to `${STAGING_DIR}/<uploadId>/<sanitized name>` with an EXDEV fallback; sidecar deleted; idempotent after a crash; cancelled mid-job cleans up; `upload.analyze` enqueued only when registered). Invalid media gives REJECTED + message + files deleted; ffprobe unavailable retries, then FAILED. `upload.expire` (hourly) rejects RECEIVING rows whose tus files are stale (>24 h).
+- `lib/paths.ts`: `sanitizeFileName` (NFKC so look-alikes are neutralised, last segment only, control/bidi chars, reserved chars, dot runs, Windows device names, 200 UTF-8 bytes keeping the extension, `untitled`) and `assertInside` (realpath of the deepest existing ancestor, segment-safe, symlink-aware).
+- API: `GET /uploads` (own; `?all=1` needs MANAGE_UPLOADS; status/batch filters; limit/offset), `GET /uploads/:id`, `DELETE /uploads/:id` (cancel in pre-import states, else 409), `GET /uploads/config`. DTOs in `packages/shared/src/dto/uploads.ts`.
+- Migration `0001_uploads_probe.sql`: `uploads.probe_json` (container, codec, channels, bitsPerSample).
+- CI `check` job installs `ffmpeg libchromaprint-tools`. Deps pinned in the catalog: @tus/server 2.4.7, @tus/file-store 2.1.2, tus-js-client 4.3.1 (dev).
+- Tests (`test/uploads.receive.{paths,tus,api}.test.ts`, helper `test/helpers/uploads.ts`): audio generated with ffmpeg at test time (nothing committed); real listening server + tus-js-client; multi-chunk, all formats, resume after a cut PATCH, 50 MiB / 411 limits, size, quota (in-flight, window, default, admin), disallowed ext, renamed .txt and mismatched content, 401/403/404, CSRF, traversal names, cancel, REST routes, expire job. The route matrix test passes unchanged.
+
+**Verify:** `pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm --filter server db:check && pnpm format:check` (all green; `pnpm --filter server build` bundles tus fine)
+
+```text
+db:check ok: schema matches 2 committed migration(s)
+Checking formatting...
+All matched files use Prettier code style!
+```
+
+**Deviations:** Chunked transfer encoding is refused (411) instead of counting bytes mid-stream, because Node cannot be tapped without consuming the body; Content-Length is enforced by Node's parser. Disallowed extension returns 400 (not 415). DECISIONS.md not amended.
+**Next:** H-14 (analyze) can register `upload.analyze`; H-15 can reuse `sanitizeFileName`/`assertInside`.
+**Open questions:** A tus create that fails after the DB insert leaves a RECEIVING row until `upload.expire` clears it (24 h), counting against quota until then.

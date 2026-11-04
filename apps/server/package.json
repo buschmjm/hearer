@@ -19,6 +19,8 @@
     "@fastify/cookie": "catalog:",
     "@fastify/rate-limit": "catalog:",
     "@fastify/swagger": "catalog:",
+    "@tus/file-store": "catalog:",
+    "@tus/server": "catalog:",
     "@hearer/shared": "workspace:*",
     "argon2": "catalog:",
     "better-sqlite3": "catalog:",
@@ -37,6 +39,7 @@
     "drizzle-kit": "catalog:",
     "esbuild": "catalog:",
     "eslint": "catalog:",
+    "tus-js-client": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

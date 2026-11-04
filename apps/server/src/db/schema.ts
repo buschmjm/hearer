@@ -40,6 +40,15 @@ export interface UserNotifyPrefs {
   email?: string;
 }
 
+/** Validated media facts recorded by the `upload.probe` job. */
+export interface UploadProbe {
+  /** ffprobe `format_name`, e.g. `flac` or `mov,mp4,m4a,3gp,3g2,mj2`. */
+  container: string;
+  codec: string;
+  channels: number | null;
+  bitsPerSample: number | null;
+}
+
 export const users = sqliteTable(
   'users',
   {
@@ -199,6 +208,8 @@ export const uploads = sqliteTable(
     durationMs: integer('duration_ms'),
     bitrate: integer('bitrate'),
     sampleRate: integer('sample_rate'),
+    /** Everything ffprobe reported that the pipeline keeps: codec, channels, container, tags. */
+    probeJson: text('probe_json', { mode: 'json' }).$type<UploadProbe>(),
     fingerprint: text('fingerprint'),
     status: text('status', { enum: UPLOAD_STATUSES }).notNull().default('RECEIVING'),
     /** Candidate matches from AcoustID / MusicBrainz. */
