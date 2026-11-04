@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { APP_NAME, APP_VERSION } from '@hearer/shared';
 import swagger from '@fastify/swagger';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
@@ -14,12 +14,30 @@ import {
 import { pino, type Logger } from 'pino';
 import pretty from 'pino-pretty';
 import type { Config } from './config.ts';
+import { openDatabase, pingDatabase, MEMORY_DB, type Database_ } from './db/client.ts';
+import { runMigrations } from './db/migrate.ts';
+import { SecretBox } from './lib/secrets.ts';
+import { SettingsService } from './services/settings.ts';
 import { healthRoutes, type HealthDeps } from './routes/health.ts';
 
 export const API_PREFIX = '/api/v1';
 
+declare module 'fastify' {
+  interface FastifyInstance {
+    /** Shared services; route plugins use these instead of opening their own handles. */
+    hearer: { database: Database_; secrets: SecretBox; settings: SettingsService };
+  }
+}
+
 export interface AppDeps {
   version?: string;
+  /**
+   * An open, already-migrated database (index.ts passes the real one and closes it itself).
+   * When omitted, buildApp creates a migrated in-memory database and closes it with the app.
+   */
+  db?: Database_;
+  /** Encryption for secret settings. Defaults to HEARER_SECRET, else an ephemeral key. */
+  secrets?: SecretBox;
   healthChecks?: HealthDeps['checks'];
   /** Extra route plugins registered under /api/v1 (feature batches, tests). */
   routes?: FastifyPluginCallbackZod[];
@@ -70,6 +88,23 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
     genReqId: () => randomUUID(),
   };
   const app = Fastify(serverOptions).withTypeProvider<ZodTypeProvider>();
+
+  let database = deps.db;
+  if (!database) {
+    const owned = openDatabase(MEMORY_DB);
+    runMigrations(owned.db);
+    app.addHook('onClose', () => {
+      owned.close();
+    });
+    database = owned;
+  }
+  const secrets = deps.secrets ?? new SecretBox(config.secret ?? randomBytes(32));
+  app.decorate('hearer', {
+    database,
+    secrets,
+    settings: new SettingsService(database.db, secrets, app.log),
+  });
+  const dbHandle = database;
 
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
@@ -130,10 +165,17 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
   app.get(`${API_PREFIX}/openapi.json`, { schema: { hide: true } }, () => app.swagger());
 
   await app.register(
-    healthRoutes({ version, ...(deps.healthChecks && { checks: deps.healthChecks }) }),
-    {
-      prefix: API_PREFIX,
-    },
+    healthRoutes({
+      version,
+      checks: {
+        db: () => {
+          pingDatabase(dbHandle);
+          return { status: 'ok' as const };
+        },
+        ...deps.healthChecks,
+      },
+    }),
+    { prefix: API_PREFIX },
   );
 
   for (const plugin of deps.routes ?? []) {
