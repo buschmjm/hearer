@@ -164,7 +164,7 @@ export const jobRoutes: FastifyPluginCallbackZod = (app, _options, done) => {
       }
       try {
         // Guarded on the status so two clicks cannot both flip it.
-        const updated: JobRow | undefined = db
+        const [updated] = db
           .update(jobs)
           .set({
             status: 'queued',
@@ -177,7 +177,7 @@ export const jobRoutes: FastifyPluginCallbackZod = (app, _options, done) => {
           })
           .where(and(eq(jobs.id, row.id), sql`${jobs.status} in ('dead', 'failed')`))
           .returning()
-          .get();
+          .all();
         if (!updated) {
           throw new HttpError(409, 'job_not_retryable', 'Only dead or failed jobs can be retried');
         }
