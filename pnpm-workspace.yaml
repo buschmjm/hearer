@@ -6,6 +6,10 @@ packages:
 # "catalog:" so every workspace member uses the exact same version.
 catalog:
   '@fastify/swagger': 9.9.3
+  '@types/better-sqlite3': 9.6.0
+  better-sqlite3: 13.0.3
+  drizzle-kit: 0.31.11
+  drizzle-orm: 0.45.4
   esbuild: 0.28.2
   fastify: 5.12.8
   fastify-type-provider-zod: 7.0.0

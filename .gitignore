@@ -15,3 +15,4 @@ coverage/
 *.sqlite
 *.sqlite-*
 *.db
+.db-check-*/
