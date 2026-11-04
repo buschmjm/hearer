@@ -27,6 +27,7 @@
     "drizzle-orm": "catalog:",
     "fastify": "catalog:",
     "jose": "catalog:",
+    "music-metadata": "catalog:",
     "fastify-type-provider-zod": "catalog:",
     "openid-client": "catalog:",
     "pino": "catalog:",

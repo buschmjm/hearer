@@ -440,3 +440,44 @@ All matched files use Prettier code style!
 **Deviations:** Chunked transfer encoding is refused (411) instead of counting bytes mid-stream, because Node cannot be tapped without consuming the body; Content-Length is enforced by Node's parser. Disallowed extension returns 400 (not 415). DECISIONS.md not amended.
 **Next:** H-14 (analyze) can register `upload.analyze`; H-15 can reuse `sanitizeFileName`/`assertInside`.
 **Open questions:** A tus create that fails after the DB insert leaves a RECEIVING row until `upload.expire` clears it (24 h), counting against quota until then.
+
+## H-14 — Analyze: fingerprint, AcoustID, candidate scoring, dedupe, review API
+
+**Status:** done
+
+**Shipped:**
+
+- `lib/fpcalc.ts`: `fpcalc(path, {binary, timeoutMs, lengthSeconds})` (`-json -length 120`, arg array, absolute path only), `FpcalcUnavailableError` (missing binary) vs `FpcalcError`. Neither is fatal for the job.
+- `adapters/metadata/acoustid.ts`: `AcoustIdClient.lookup(fingerprint, seconds)` posts the form to `{metadata.acoustIdBaseUrl}/lookup` (`meta=recordings releasegroups releases tracks compress`), key from `metadata.acoustIdApiKey`, UA like MB, own process-global limiter (340 ms, at most 3/s), `{status:'disabled'}` plus one log line with no key, error envelope mapped to `AcoustIdError` kinds (`auth` for codes 4/6, `unavailable` for 5, 429/503 (penalises the limiter), network and 5xx, `bad_request`, `bad_response`).
+- `lib/audioTags.ts`: existing-tag reader on `music-metadata` 12.3.4 (pinned in the catalog).
+- `services/matching.ts`: scoring (`similarity`, `durationScore`, `trackScore`, `combineScore`, weights and the 0.95 unfingerprinted factor, all in `docs/MATCHING.md`), `MatchingService.match` (AcoustID + tag-id + MB tag search leads, top 5 detailed through the cached `MetadataProvider`, `rankReleases` release choice), `MatchingService.group` (album grouping), `DuplicateChecker` (sha256 and library checks, reusing `FuzzyLibraryLookup`).
+- `jobs/uploadAnalyze.ts`: `upload.analyze` (concurrency 2, 3 attempts). RECEIVED to ANALYZING to NEEDS_REVIEW or DUPLICATE; stores `fingerprint`, `match_json`, `chosen_json`. Transient MB/AcoustID errors retry; the last attempt tolerates AcoustID trouble and otherwise sets FAILED. The last file of a batch groups the album, then every member is finalized.
+- `services/uploadReview.ts` (`app.hearer.uploadReview`): `finalize` (auto-approve when the uploader has AUTO_APPROVE_UPLOAD, score >= `uploads.autoApproveThreshold`, no duplicate; else `upload.needs_review` once), `review`, `approve`, `reject`, `keep`, `reanalyze`, `batchApprove`, `detail`. Approve enqueues `upload.import` only when that job type is registered.
+- `routes/uploads.review.ts`: `PUT /uploads/:id/review`, `POST /uploads/:id/{approve,reject,keep,reanalyze}`, `POST /uploads/batch/:batchId/approve`. `GET /uploads/:id` now returns `UploadDetail` (match, chosen, canKeep). All guarded by UPLOAD or MANAGE_UPLOADS, then finer rules; other people's uploads are 404; the route matrix passes unchanged.
+- Shared DTOs in `dto/uploads.ts`: `TagSet` (+ `coverSource`), `MatchCandidate`, `MatchResult`, `AlbumGroup`, `UploadDetail`, review/reject/keep bodies. Settings: `uploads.allowDuplicateOverride` (default false) and `metadata.acoustIdBaseUrl`.
+- Tests (`test/uploads.analyze.{units,acoustid,job,group,review}.test.ts`, helpers `analyze.ts`, `acoustIdServer.ts`): fpcalc on ffmpeg audio, missing/hung/junk binaries, tags, scoring curves, AcoustID against a local server (success, envelope, disabled, limiter, abort), job end to end with the H-09 MB fixtures (AcoustID path, tags-only path, missing fpcalc, key rejected, auto-approve met / not met / no permission, duplicates a/b/c plus tie-break, kept override, retries and final-attempt failure), batch grouping (e2e and with a fake provider that proves re-ranking), review routes with permission, IDOR and `targetRequestId` validation, events.
+
+**Verify:** `pnpm --filter server test -- uploads.analyze`, then `pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm --filter server db:check && pnpm format:check`
+
+```text
+apps/server test:  Test Files  34 passed | 1 skipped (35)
+apps/server test:       Tests  812 passed | 4 skipped (816)
+db:check ok: schema matches 2 committed migration(s)
+Checking formatting...
+All matched files use Prettier code style!
+```
+
+**Deviations:**
+
+- No schema change (the `0003_*` migration name was not needed). DECISIONS.md not amended.
+- More than 8 files: source split into fpcalc, audioTags, acoustid, matching, uploadReview, uploadAnalyze, routes; tests into 5 files plus 2 helpers.
+- `uploads.allowDuplicateOverride` is a boolean that defaults to **false**: MANAGE_UPLOADS can always override; the setting extends it to owners with UPLOAD.
+- Existing H-13 tests (`uploads.receive.*`) no longer assume an upload rests in RECEIVED after the probe, because `upload.analyze` is now registered and advances it.
+- The `upload.duplicate` event is not in the shared `NOTIFICATION_EVENTS` list (only `upload.needs_review` is); it is emitted on the bus all the same.
+- The event bus is looked up at emit time as `(app.hearer as {events?: UploadEventSink}).events` (a minimal local interface with `emit(event, payload)`); orchestrator: when H-11 lands, check its `emit` signature matches or adapt the getter in `app.ts`. H-15: `upload.import` is enqueued as `{uploadId}` with `uniqueKey: import:<id>` and must check the status is APPROVED; `chosen_json` is a valid `TagSet`, `target_request_id` is already validated.
+- Tag-only matches are capped at 0.95, so a tagged file with no AcoustID key can still auto-approve (documented).
+- Fuzzy duplicate (c) uses `FuzzyLibraryLookup`, which treats an unknown library duration as compatible.
+
+**Next:** H-15 (import), H-19 (review UI uses `UploadDetail`, `TagSet`, the review routes).
+
+**Open questions:** a batch with a member stuck in RECEIVING defers grouping and auto-approval until that member finishes, fails or expires (24 h). Release choice inspects the best 3 releases of a group, so a recording that appears only on later releases falls back to the representative release with the file's own track number.

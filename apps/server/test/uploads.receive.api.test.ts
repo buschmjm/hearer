@@ -111,7 +111,7 @@ describe('listing and reading', () => {
     const id = await received(ctx.alice);
     const own = await api(ctx.alice, 'GET', `/uploads/${id}`);
     expect(own.statusCode).toBe(200);
-    expect(own.json<UploadDto>()).toMatchObject({ id, status: 'RECEIVED', format: 'flac' });
+    expect(own.json<UploadDto>()).toMatchObject({ id, format: 'flac' });
     expect((await api(ctx.bob, 'GET', `/uploads/${id}`)).statusCode).toBe(404);
     expect((await api(ctx.admin, 'GET', `/uploads/${id}`)).statusCode).toBe(200);
     expect(
@@ -147,7 +147,7 @@ describe('DELETE /uploads/:id (cancel)', () => {
   it('is limited to the owner or a manager and refuses imported uploads', async () => {
     const id = await received(ctx.alice);
     expect((await api(ctx.bob, 'DELETE', `/uploads/${id}`)).statusCode).toBe(404);
-    expect(ctx.h.app.hearer.uploads.get(id)?.status).toBe('RECEIVED');
+    expect(ctx.h.app.hearer.uploads.get(id)?.status).not.toMatch(/^(IMPORTING|REJECTED)$/u);
     ctx.h.app.hearer.database.sqlite
       .prepare("update uploads set status = 'IMPORTING' where id = ?")
       .run(id);
