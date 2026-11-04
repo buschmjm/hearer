@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { validateNamingTemplate } from './template.ts';
 import { DEFAULT_USER_PERMISSIONS, isValidPermissionMask } from './permissions.ts';
 
 /** Default library path template (see PLAN, upload pipeline step 5). */
@@ -89,9 +90,20 @@ const mediaServer = z.object({
     .default([]),
 });
 
+/** A path template; unknown variables and unsafe shapes are rejected when it is saved. */
+const pathTemplate = (fallback: string) =>
+  z
+    .string()
+    .min(1)
+    .superRefine((value, ctx) => {
+      for (const message of validateNamingTemplate(value))
+        ctx.addIssue({ code: 'custom', message });
+    })
+    .default(fallback);
+
 const library = z.object({
-  namingTemplate: z.string().min(1).default(DEFAULT_NAMING_TEMPLATE),
-  singlesTemplate: z.string().min(1).default(DEFAULT_SINGLES_TEMPLATE),
+  namingTemplate: pathTemplate(DEFAULT_NAMING_TEMPLATE),
+  singlesTemplate: pathTemplate(DEFAULT_SINGLES_TEMPLATE),
 });
 
 const uploads = z.object({

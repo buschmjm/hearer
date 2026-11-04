@@ -30,6 +30,7 @@
     "fastify": "catalog:",
     "jose": "catalog:",
     "music-metadata": "catalog:",
+    "node-taglib-sharp": "catalog:",
     "fastify-type-provider-zod": "catalog:",
     "openid-client": "catalog:",
     "pino": "catalog:",
