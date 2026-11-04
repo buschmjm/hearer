@@ -588,6 +588,8 @@ All matched files use Prettier code style!
 
 ## H-21 - Notifications: agents, events, per-user prefs (server side)
 
+## H-17 — Web: search, artist/album/track pages, request flow
+
 **Status:** done
 
 **Shipped:**
@@ -646,3 +648,65 @@ All matched files use Prettier code style!
 **Next:** H-21 (notifications: `upload.imported` / `upload.failed` payloads carry `libraryPath` / `detail`), H-19 (web review UI can show `retry-import`).
 
 **Open questions:** (1) Jellyfin's real behaviour for `POST /Library/Media/Updated` on a new file is unverified; the follow-up incremental sync two minutes later is the safety net. (2) A cover is skipped (not an error) when CAA has none; a CAA outage is retried and skipped on the last attempt. (3) ffmpeg-fallback files lose some MusicBrainz ids (see above); the fallback should never trigger for the seven accepted formats.
+
+- `/search?q=&type=artist|album|track` (`routes/search.tsx`): search box debounced 400 ms and synced to the URL (`replace`, so no history spam; back/forward and the home search box overwrite the field only when the URL changed from outside), ARIA tabs (arrow keys) Artists / Albums (default, matches the API default and the URL omits it) / Tracks, `useInfiniteQuery` with "Load more" (offset paging, 20 per page, capped at the API's 10 000), skeleton loaders, empty states, friendly retryable errors (502 `metadata_unavailable`, 429, offline).
+- `/artists/$mbid`, `/albums/$mbid`, `/tracks/$mbid`: artist header + release groups grouped Albums / EPs / Singles / Other by primary type (newest first, "Show more releases" over the 50-per-page browse); album page with the 500 px cover (`front-250` swapped for `front-500`), meta chips, linked artist credits, tracklist grouped by disc with durations and a per-track request control; track page with ISRCs and "Appears on".
+- Components: `ResultCard` (tile for albums, row for artists/tracks), `Cover` (CAA `onError` swaps in a placeholder, also for a missing url), `StatusBadge` / `RequestStatusBadge` / `LibraryBadge` ("In library", "Possibly in library", Requested/Approved/Processing/Awaiting upload/Available/...), `RequestButton`, `QuotaNote`, `Toast` (`ToastProvider` mounted in `Layout`, `useToast`, outside a provider it is a no-op), `Dialog` (accessible modal: focus trap, Esc, restore focus, scroll lock; used by H-18), `CatalogState` (error/empty/skeleton), `DetailParts`, `ArtistCredits`.
+- `RequestButton`: needs REQUEST / REQUEST_ALBUM / REQUEST_ARTIST for the type (ADMIN passes); without it a disabled button with a tooltip and an accessible reason. Existing state replaces the button (in library, requested, approved, ... available); declined/failed offer "Request again"; a possible library match shows next to the button. `POST /requests` shows the requested state immediately and rolls back on error; success/409/429 and other failures become toasts; 409 `already_requested` shows the existing request's real status, 409 `already_available` shows "In library", 429 `quota_exceeded` shows used/limit and when a slot frees up. Quota (`GET /requests/quota`) is in the button tooltip and as a line under the primary buttons. Mutations invalidate `['requests']` and `['catalog']`.
+- API hooks: `api/catalog.ts` (search, artist, artist albums, album, track query options with shared zod schemas) and `api/requests.ts` (list, counts, quota, detail, create, approve/decline/retry/cancel hooks; used by H-18 too). Query-key factories `catalogKeys` / `requestKeys`.
+- Router: `/search` search schema (`q`, `type`), three detail routes; the stub is gone. The home search box already navigated to `/search?q=`.
+- Tests (`search`, `requestButton`, `catalogPages`; helpers `catalogFixtures.ts`, `renderUtils.tsx`): debounce (no request per keystroke) and URL sync, tabs, load more, badges, empty/error/retry, cover fallback, link targets, RequestButton states incl. 409/429/permissions/rollback/ADMIN/quota tooltip, artist grouping, album tracklist single-track and album requests, disc grouping, track page, format helpers.
+- Screenshots (1280 and 390 px, dark, real server + fixture MusicBrainz): `/tmp/claude-0/-home-user/d2e062ff-6bd1-5840-b011-41cd111dc499/scratchpad/h17-{search,search-artists,search-tracks,album,artist,track}-{1280,390}.png`.
+
+**Server fixes found by running the real app (small, surgical):**
+
+- `routes/requests.ts` and `routes/search.ts` aborted the upstream MusicBrainz call as soon as the request body was read: over a real socket Node emits `close` on the IncomingMessage right after the body, and the old test (`!complete || destroyed`) is true then. `POST /requests` returned 500 against the real app (tests use `inject`, which never hit it). Now the abort is tied to the response closing unfinished (`reply.raw`). New real-HTTP regression test `requests.http.test.ts` (fails on the old code; also checks that a real disconnect still aborts).
+- CSP `img-src` allowed `https://*.archive.org` but not the bare `https://archive.org` the Cover Art Archive redirects to, so covers were blocked in browsers. Added `https://archive.org` (`static.ts` and its test).
+
+**Verify:** `pnpm --filter web build && pnpm --filter web test`, then `pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm format:check`
+
+```text
+apps/web test:  Test Files  9 passed (9)
+apps/web test:       Tests  96 passed (96)
+apps/server test:  Test Files  40 passed | 1 skipped (41)
+apps/server test:       Tests  1044 passed | 4 skipped (1048)
+Checking formatting...
+All matched files use Prettier code style!
+```
+
+**Deviations:** more than 8 files (components, routes, API hooks, tests). Two server fixes outside the web app (see above). No cover image proxy (the UI uses CAA URLs directly, as H-09 planned). Catalog results show the badge/state through `RequestButton` (one control for state and action) rather than a separate badge in the card, so the optimistic state is shown in one place. DECISIONS.md not amended.
+
+**Next:** H-18 (requests queue, my requests, timeline).
+
+**Open questions:** none.
+
+## H-18 — Web: requests queue, my requests, timeline
+
+**Status:** done
+
+**Shipped:**
+
+- `/requests` (`routes/requests.tsx`): "My requests" for everyone, an "All requests" tab for VIEW_ALL_REQUESTS / MANAGE_REQUESTS (`?tab=all` is ignored without the permission, so the API is never asked for everyone's). Status count chips from `GET /requests/counts` (zero counts hidden), type filter, sort (newest / oldest / recently updated), pagination (20 per page, "Showing x-y of n"), all in the URL (`lib/requestFilters.ts`), skeleton / empty / error states.
+- `RequestTable`: one DOM laid out by CSS, a table (ARIA table roles) from `md` up and cards on phones; cover, title (links to the detail page), artist, type, requester (All tab only), status badge, relative date (absolute time in the tooltip), actions.
+- `RequestActions` (table and detail page): Approve / Decline (MANAGE_REQUESTS, PENDING), Retry (MANAGE_REQUESTS, FAILED), Cancel (owner or manager, while the server allows it) with a confirm dialog; server refusals (e.g. `invalid_transition`) show as toasts and the lists refresh. `DeclineDialog`: reason required (trimmed), 500 character cap with live counter, server error inline. `Dialog` from H-17 gives role=dialog/aria-modal, focus into the reason field, Tab trap, Esc, focus restore.
+- `/requests/$id` (`routes/request-detail.tsx`): header with cover, type and status, actions, decline reason, `Timeline` (from to status badges, actor or System, note, relative time, oldest first), details card, links to the album / artist / track (and the parent album for tracks).
+- Nav: managers see a pending-count badge on Requests (desktop and bottom bar, refreshed every minute and after any request change), with a screen-reader "(n pending)".
+- Tests (`requests.test.tsx`, 28): table per-permission actions (manager, owner, view-all, final states), approve / retry / cancel (with confirm) / refusal, decline validation (blank, whitespace, cap, trimmed body, server error, Esc, Tab trap), timeline, page tabs / permission gate / filters / sort / pagination / empty / error, detail page, nav badge. Web total 124 tests.
+- Screenshots (1280 and 390 px, dark): `/tmp/claude-0/-home-user/d2e062ff-6bd1-5840-b011-41cd111dc499/scratchpad/h18-{requests-all,request-detail,request-declined,decline-dialog}-{1280,390}.png`.
+
+**Verify:** `pnpm --filter web build && pnpm --filter web test`, then `pnpm -r lint && pnpm -r typecheck && pnpm -r test && pnpm format:check`
+
+```text
+apps/web test:  Test Files  10 passed (10)
+apps/web test:       Tests  124 passed (124)
+apps/server test:  Test Files  40 passed | 1 skipped (41)
+apps/server test:       Tests  1044 passed | 4 skipped (1048)
+Checking formatting...
+All matched files use Prettier code style!
+```
+
+**Deviations:** more than 8 files. In the desktop table Cancel is icon-only (accessible name and tooltip kept) to fit three actions. The queue filters one status at a time (the API accepts lists; chips are single-select). DECISIONS.md not amended.
+
+**Next:** H-19 (upload UI).
+
+**Open questions:** none.
