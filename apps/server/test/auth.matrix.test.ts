@@ -43,6 +43,9 @@ const AUTHENTICATED_ONLY = new Set([
   'GET /api/v1/auth/api-keys',
   'POST /api/v1/auth/api-keys',
   'DELETE /api/v1/auth/api-keys/:id',
+  // Own notification preferences (H-21): only ever read and write the caller's row.
+  'GET /api/v1/auth/me/notifications',
+  'PUT /api/v1/auth/me/notifications',
   // Catalog search and browse (H-09): any signed-in user.
   'GET /api/v1/search',
   'GET /api/v1/artists/:mbid',
